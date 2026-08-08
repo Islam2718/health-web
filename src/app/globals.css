@@ -1,26 +1,176 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-ice-blue: var(--ice-blue);
+  --color-robins-blue: var(--robins-blue);
+  --color-happy-sky: var(--happy-sky);
+  --color-aqua-blue: var(--aqua-blue);
+  --color-aqua-mint: var(--aqua-mint);
+  --color-teal: var(--teal);
+  --color-medium-teal: var(--medium-teal);
+  --color-dark-teal: var(--dark-teal);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  /* Ibnocare brand palette */
+  --ice-blue: #c2e6e6;
+  --robins-blue: #94d6d3;
+  --happy-sky: #7ad0d8;
+  --aqua-blue: #54b8c2;
+  --aqua-mint: #4fbaad;
+  --teal: #1aa2a0;
+  --medium-teal: #2d8e95;
+  --dark-teal: #176e76;
+
+  --background: #ffffff;
+  --foreground: #0f2a2b;
+  --card: #ffffff;
+  --card-foreground: #0f2a2b;
+  --popover: #ffffff;
+  --popover-foreground: #0f2a2b;
+  --primary: var(--teal);
+  --primary-foreground: #ffffff;
+  --secondary: #e6f5f4;
+  --secondary-foreground: var(--dark-teal);
+  --muted: #eaf6f5;
+  --muted-foreground: #5a8482;
+  --accent: var(--happy-sky);
+  --accent-foreground: #0f2a2b;
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: #d8eeec;
+  --input: #d8eeec;
+  --ring: var(--teal);
+  --chart-1: var(--teal);
+  --chart-2: var(--aqua-mint);
+  --chart-3: var(--aqua-blue);
+  --chart-4: var(--happy-sky);
+  --chart-5: var(--robins-blue);
+  --radius: 0.75rem;
+  --sidebar: #f6fbfb;
+  --sidebar-foreground: #0f2a2b;
+  --sidebar-primary: var(--teal);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6f5f4;
+  --sidebar-accent-foreground: var(--dark-teal);
+  --sidebar-border: #d8eeec;
+  --sidebar-ring: var(--teal);
+}
+
+.dark {
+  --background: #0a1e1f;
+  --foreground: #e6f5f4;
+  --card: #102b2c;
+  --card-foreground: #e6f5f4;
+  --popover: #102b2c;
+  --popover-foreground: #e6f5f4;
+  --primary: var(--aqua-mint);
+  --primary-foreground: #0a1e1f;
+  --secondary: #1b3b3c;
+  --secondary-foreground: #e6f5f4;
+  --muted: #16302f;
+  --muted-foreground: #8fc7c4;
+  --accent: var(--dark-teal);
+  --accent-foreground: #e6f5f4;
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: #1b3b3c;
+  --input: #1b3b3c;
+  --ring: var(--aqua-mint);
+  --chart-1: var(--aqua-mint);
+  --chart-2: var(--aqua-blue);
+  --chart-3: var(--happy-sky);
+  --chart-4: var(--robins-blue);
+  --chart-5: var(--ice-blue);
+  --sidebar: #0f2626;
+  --sidebar-foreground: #e6f5f4;
+  --sidebar-primary: var(--aqua-mint);
+  --sidebar-primary-foreground: #0a1e1f;
+  --sidebar-accent: #1b3b3c;
+  --sidebar-accent-foreground: #e6f5f4;
+  --sidebar-border: #1b3b3c;
+  --sidebar-ring: var(--aqua-mint);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Printing an A4 prescription: hide everything on the page except the
+   #prescription-print-area block (built in the dashboard's Prescriptions
+   tab), which itself stays display:none on screen and is only revealed
+   here — a standard "isolate one element for print" pattern that avoids
+   having to sprinkle print:hidden across the header/sidebar/other tabs. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #prescription-print-area,
+  #prescription-print-area * {
+    visibility: visible;
+  }
+  #prescription-print-area {
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    padding: 12mm;
+    color: #000;
+    background: #fff;
+  }
+  @page {
+    size: A4;
+    margin: 0;
+  }
 }
