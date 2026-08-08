@@ -43,3 +43,7 @@ ftp.txt
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# AI Files
+*.bin
+.claude
