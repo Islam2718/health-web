@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
-import { Pencil, Plus, Search, Trash2, Users as UsersIcon } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Search, Trash2, Users as UsersIcon, WifiOff } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { UserAvatar } from "@/components/user-avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
@@ -17,31 +18,72 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useAdminResource } from "@/hooks/use-admin-resource";
-import { adminUsers, roleOptions, type AdminManagedUser } from "@/lib/admin-users-data";
+import { useAdminAuth } from "@/context/admin-auth-context";
+import { deleteUser, fetchUsers, roleLabel, ROLE_OPTIONS } from "@/lib/admin-users";
+import type { ApiUser } from "@/lib/api-client";
 import { toast } from "sonner";
 
 export default function AdminUsersPage() {
-  const { items, remove } = useAdminResource<AdminManagedUser>("admin_users", adminUsers);
+  const { token } = useAdminAuth();
+  const [users, setUsers] = useState<ApiUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
   const [query, setQuery] = useState("");
-  const [role, setRole] = useState<"All" | AdminManagedUser["role"]>("All");
-  const [deleteTarget, setDeleteTarget] = useState<AdminManagedUser | null>(null);
+  const [role, setRole] = useState("All");
+  const [deleteTarget, setDeleteTarget] = useState<ApiUser | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    setLoading(true);
+    fetchUsers(token).then(({ users: results, failed }) => {
+      if (cancelled) return;
+      setUsers(results);
+      setLoadFailed(failed);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, retryToken]);
+
+  const retry = useCallback(() => setRetryToken((n) => n + 1), []);
 
   const filtered = useMemo(() => {
-    return items.filter((u) => {
-      const matchesRole = role === "All" || u.role === role;
+    return users.filter((u) => {
+      const matchesRole = role === "All" || roleLabel(u.type) === role;
       const q = query.trim().toLowerCase();
-      const matchesQuery = !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+      const matchesQuery =
+        !q || u.name.toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q);
       return matchesRole && matchesQuery;
     });
-  }, [items, query, role]);
+  }, [users, query, role]);
+
+  const confirmDelete = async () => {
+    if (!token || !deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteUser(token, deleteTarget.id);
+      setUsers((list) => list.filter((u) => u.id !== deleteTarget.id));
+      toast.success("User removed");
+    } catch {
+      toast.error("Could not remove that user.");
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-7xl">
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Users</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{items.length} accounts registered</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {loading ? "Loading…" : `${users.length} accounts registered`}
+          </p>
         </div>
         <Button render={<Link href="/admin/user/new" />} nativeButton={false}>
           <Plus /> Add User
@@ -54,7 +96,7 @@ export default function AdminUsersPage() {
       </div>
 
       <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-2">
-        {(["All", ...roleOptions] as const).map((r) => (
+        {["All", ...ROLE_OPTIONS.map((r) => r.label)].map((r) => (
           <button
             key={r}
             onClick={() => setRole(r)}
@@ -71,6 +113,16 @@ export default function AdminUsersPage() {
       </div>
 
       <Card className="mt-5 overflow-hidden border-border/60 p-0">
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              className="size-8 rounded-full border-2 border-primary border-t-transparent"
+            />
+          </div>
+        ) : (
+          <>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -88,19 +140,22 @@ export default function AdminUsersPage() {
                 <TableRow key={user.id}>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={user.avatar} alt={user.name} className="size-9 rounded-full object-cover" />
+                      <UserAvatar name={user.name} imageUrl={user.profile_image} gender={user.gender} size="sm" />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-foreground">{user.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                        <p className="truncate text-xs text-muted-foreground">{user.email ?? user.phone}</p>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{user.role}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{user.phone}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{user.joined}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{roleLabel(user.type)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{user.phone ?? "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {user.created_at ? user.created_at.slice(0, 10) : "—"}
+                  </TableCell>
                   <TableCell>
-                    <Badge variant={user.status === "Active" ? "default" : "destructive"}>{user.status}</Badge>
+                    <Badge variant={user.is_active ? "default" : "destructive"}>
+                      {user.is_active ? "Active" : "Suspended"}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1.5">
@@ -117,13 +172,30 @@ export default function AdminUsersPage() {
             </TableBody>
           </Table>
         </div>
-        {filtered.length === 0 && (
+
+        {filtered.length === 0 && loadFailed && (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="flex size-12 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
+              <WifiOff className="size-5" />
+            </div>
+            <p className="mt-3 font-semibold text-foreground">Couldn&apos;t load users</p>
+            <p className="mt-1 text-sm text-muted-foreground">We couldn&apos;t reach the server.</p>
+            <Button variant="outline" size="sm" className="mt-4" onClick={retry}>
+              <RefreshCw />
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {filtered.length === 0 && !loadFailed && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-secondary text-primary">
               <UsersIcon className="size-5" />
             </div>
             <p className="mt-3 font-semibold text-foreground">No users found</p>
           </div>
+        )}
+          </>
         )}
       </Card>
 
@@ -137,8 +209,8 @@ export default function AdminUsersPage() {
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => { if (deleteTarget) { remove(deleteTarget.id); toast.success("User removed"); } setDeleteTarget(null); }}>
-              Delete
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? "Removing..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

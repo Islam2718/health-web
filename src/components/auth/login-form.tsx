@@ -38,7 +38,10 @@ export function LoginForm() {
 
   const onSubmit = async (values: LoginValues) => {
     setAuthError(null);
-    const result = await login(values.identifier, values.password);
+    // Trim defensively — some WebView keyboards (notably inside the Android
+    // app wrapper) can insert a stray leading/trailing space via their
+    // predictive-text bar that isn't visible to the user.
+    const result = await login(values.identifier.trim(), values.password);
     if (!result.success) {
       setAuthError(result.message ?? "Invalid email or password. Please try again.");
       return;
@@ -77,6 +80,10 @@ export function LoginForm() {
                 <Input
                   id="identifier"
                   placeholder="you@example.com or 01XXXXXXXXX"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   {...register("identifier")}
                 />
                 {errors.identifier && (
@@ -97,6 +104,10 @@ export function LoginForm() {
                     type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
                     className="pr-10"
+                    autoComplete="current-password"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     {...register("password")}
                   />
                   <button

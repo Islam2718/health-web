@@ -80,16 +80,21 @@ function buildQuery(params: FetchPublicDoctorsParams): string {
 
 // Both endpoints are public (no Bearer token) — used by the marketing-facing
 // /doctors directory and /doctors/[id] profile pages.
+//
+// `failed` distinguishes "the request itself didn't work" (network hiccup,
+// backend unreachable) from "it worked and there just aren't any matches" —
+// collapsing both into an empty array made a failed request look identical
+// to a genuine zero-result search, which is misleading in the UI.
 export async function fetchPublicDoctors(
   params: FetchPublicDoctorsParams = {}
-): Promise<{ doctors: PublicDoctorRecord[]; meta: PublicDoctorListMeta | null }> {
+): Promise<{ doctors: PublicDoctorRecord[]; meta: PublicDoctorListMeta | null; failed: boolean }> {
   try {
     const res = await apiFetch<{ data: PublicDoctorRecord[]; meta?: PublicDoctorListMeta }>(
       `/doctors/public${buildQuery(params)}`
     );
-    return { doctors: res?.data ?? [], meta: res?.meta ?? null };
+    return { doctors: res?.data ?? [], meta: res?.meta ?? null, failed: false };
   } catch {
-    return { doctors: [], meta: null };
+    return { doctors: [], meta: null, failed: true };
   }
 }
 
@@ -103,7 +108,8 @@ export async function fetchPublicDoctor(id: string | number): Promise<PublicDoct
 }
 
 export function doctorDisplayName(doctor: PublicDoctorRecord): string {
-  return doctor.user?.name?.trim() || "Doctor";
+  const name = doctor.user?.name?.trim();
+  return name ? `Dr. ${name}` : "Doctor";
 }
 
 export function doctorTitleLine(doctor: PublicDoctorRecord): string {

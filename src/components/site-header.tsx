@@ -4,7 +4,24 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { CalendarDays, FileText, FlaskConical, LogIn, LogOut, Menu, Sparkles, User } from "lucide-react";
+import {
+  Ambulance,
+  CalendarDays,
+  ClipboardList,
+  Droplet,
+  FileText,
+  FlaskConical,
+  LogIn,
+  LogOut,
+  Menu,
+  MessageCircle,
+  Pill,
+  Receipt,
+  ShoppingCart,
+  Sparkles,
+  Store,
+  User,
+} from "lucide-react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/user-avatar";
@@ -25,15 +42,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { careLinks } from "@/lib/mock-data";
 import { useAuth } from "@/context/auth-context";
+import { getRoles } from "@/lib/doctor-profile";
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isAuthenticated, logout } = useAuth();
-  const role = user?.type?.toUpperCase() ?? "";
-  // Matches the dashboard sidebar's own patient-vs-other-role gating.
-  const isPatient = role === "PATIENT" || role === "USER";
+  const { user, isAuthenticated, logout, isBloodDonor, hasAmbulance, hasStore } = useAuth();
+  // The API represents multi-role accounts as a comma-separated type string
+  // (e.g. "USER,DOCTOR") — a plain `type === "USER"` check fails for those,
+  // which was hiding these links entirely for every doctor account. Matches
+  // the dashboard sidebar's own role parsing.
+  const roles = getRoles(user?.type);
+  const isPatient = roles.includes("PATIENT") || roles.includes("USER");
+  const isDoctor = roles.includes("DOCTOR");
 
   return (
     <motion.header
@@ -93,18 +115,62 @@ export function SiteHeader() {
                 </DropdownMenuItem>
                 {isPatient && (
                   <>
-                    <DropdownMenuItem render={<Link href="/dashboard?tab=appointments" />}>
+                    <DropdownMenuItem
+                      render={<Link href={`/dashboard?tab=${isDoctor ? "my-appointments" : "appointments"}`} />}
+                    >
                       <CalendarDays className="size-4 text-primary" />
-                      Appointments
+                      {isDoctor ? "My Appointments" : "Appointments"}
                     </DropdownMenuItem>
-                    <DropdownMenuItem render={<Link href="/dashboard?tab=prescriptions" />}>
+                    <DropdownMenuItem
+                      render={<Link href={`/dashboard?tab=${isDoctor ? "my-prescriptions" : "prescriptions"}`} />}
+                    >
                       <FileText className="size-4 text-primary" />
-                      Prescriptions
+                      {isDoctor ? "My Prescriptions" : "Prescriptions"}
                     </DropdownMenuItem>
                     <DropdownMenuItem render={<Link href="/dashboard?tab=diagnostic-reports" />}>
                       <FlaskConical className="size-4 text-primary" />
                       Diagnostic Reports
                     </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link href="/dashboard?tab=posts" />}>
+                      <MessageCircle className="size-4 text-primary" />
+                      My Posts
+                    </DropdownMenuItem>
+                    {isBloodDonor && (
+                      <DropdownMenuItem render={<Link href="/dashboard?tab=blood-donor" />}>
+                        <Droplet className="size-4 text-primary" />
+                        Blood Donor
+                      </DropdownMenuItem>
+                    )}
+                    {hasAmbulance && (
+                      <DropdownMenuItem render={<Link href="/dashboard?tab=ambulances" />}>
+                        <Ambulance className="size-4 text-primary" />
+                        My Ambulances
+                      </DropdownMenuItem>
+                    )}
+                    {hasStore && (
+                      <>
+                        <DropdownMenuItem render={<Link href="/dashboard?tab=store" />}>
+                          <Store className="size-4 text-primary" />
+                          Shop
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/dashboard?tab=store-products" />}>
+                          <Pill className="size-4 text-primary" />
+                          Products
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/dashboard?tab=store-stock" />}>
+                          <Receipt className="size-4 text-primary" />
+                          Stock
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/dashboard?tab=pos" />}>
+                          <ShoppingCart className="size-4 text-primary" />
+                          POS
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/dashboard?tab=store-orders" />}>
+                          <ClipboardList className="size-4 text-primary" />
+                          My Orders
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </>
                 )}
                 <DropdownMenuSeparator />
@@ -180,16 +246,26 @@ export function SiteHeader() {
                       <Button
                         variant="outline"
                         nativeButton={false}
-                        render={<Link href="/dashboard?tab=appointments" onClick={() => setOpen(false)} />}
+                        render={
+                          <Link
+                            href={`/dashboard?tab=${isDoctor ? "my-appointments" : "appointments"}`}
+                            onClick={() => setOpen(false)}
+                          />
+                        }
                       >
-                        <CalendarDays /> Appointments
+                        <CalendarDays /> {isDoctor ? "My Appointments" : "Appointments"}
                       </Button>
                       <Button
                         variant="outline"
                         nativeButton={false}
-                        render={<Link href="/dashboard?tab=prescriptions" onClick={() => setOpen(false)} />}
+                        render={
+                          <Link
+                            href={`/dashboard?tab=${isDoctor ? "my-prescriptions" : "prescriptions"}`}
+                            onClick={() => setOpen(false)}
+                          />
+                        }
                       >
-                        <FileText /> Prescriptions
+                        <FileText /> {isDoctor ? "My Prescriptions" : "Prescriptions"}
                       </Button>
                       <Button
                         variant="outline"
@@ -198,6 +274,70 @@ export function SiteHeader() {
                       >
                         <FlaskConical /> Diagnostic Reports
                       </Button>
+                      <Button
+                        variant="outline"
+                        nativeButton={false}
+                        render={<Link href="/dashboard?tab=posts" onClick={() => setOpen(false)} />}
+                      >
+                        <MessageCircle /> My Posts
+                      </Button>
+                      {isBloodDonor && (
+                        <Button
+                          variant="outline"
+                          nativeButton={false}
+                          render={<Link href="/dashboard?tab=blood-donor" onClick={() => setOpen(false)} />}
+                        >
+                          <Droplet /> Blood Donor
+                        </Button>
+                      )}
+                      {hasAmbulance && (
+                        <Button
+                          variant="outline"
+                          nativeButton={false}
+                          render={<Link href="/dashboard?tab=ambulances" onClick={() => setOpen(false)} />}
+                        >
+                          <Ambulance /> My Ambulances
+                        </Button>
+                      )}
+                      {hasStore && (
+                        <>
+                          <Button
+                            variant="outline"
+                            nativeButton={false}
+                            render={<Link href="/dashboard?tab=store" onClick={() => setOpen(false)} />}
+                          >
+                            <Store /> Shop
+                          </Button>
+                          <Button
+                            variant="outline"
+                            nativeButton={false}
+                            render={<Link href="/dashboard?tab=store-products" onClick={() => setOpen(false)} />}
+                          >
+                            <Pill /> Products
+                          </Button>
+                          <Button
+                            variant="outline"
+                            nativeButton={false}
+                            render={<Link href="/dashboard?tab=store-stock" onClick={() => setOpen(false)} />}
+                          >
+                            <Receipt /> Stock
+                          </Button>
+                          <Button
+                            variant="outline"
+                            nativeButton={false}
+                            render={<Link href="/dashboard?tab=pos" onClick={() => setOpen(false)} />}
+                          >
+                            <ShoppingCart /> POS
+                          </Button>
+                          <Button
+                            variant="outline"
+                            nativeButton={false}
+                            render={<Link href="/dashboard?tab=store-orders" onClick={() => setOpen(false)} />}
+                          >
+                            <ClipboardList /> My Orders
+                          </Button>
+                        </>
+                      )}
                     </>
                   )}
                   <Button

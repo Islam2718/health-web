@@ -94,9 +94,9 @@ export function DoctorProfile({ doctor }: { doctor: PublicDoctorRecord }) {
         appointment_type: "CHAMBER",
         appointment_date: schedule.date,
         appointment_time: schedule.start_time,
-        status: "PENDING",
+        status: "APPOINTED",
       });
-      toast.success("Appointment requested — check My Appointments for its status.");
+      toast.success("Appointment booked — see it under My Appointments.");
       setSelectedSlot(null);
       router.push("/dashboard?tab=appointments");
     } catch (err) {
@@ -114,7 +114,7 @@ export function DoctorProfile({ doctor }: { doctor: PublicDoctorRecord }) {
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
               <div className="relative shrink-0">
                 <UserAvatar
-                  name={name}
+                  name={doctor.user?.name?.trim() || name}
                   imageUrl={doctor.user?.profile_image}
                   gender={doctor.user?.gender}
                   className="size-24 rounded-2xl"

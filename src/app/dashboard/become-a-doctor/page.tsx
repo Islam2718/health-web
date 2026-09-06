@@ -562,10 +562,6 @@ export default function BecomeADoctorPage() {
                   ) : (
                     <>
                       <div className="mt-5 space-y-4">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="institution">Institution</Label>
-                          <Input id="institution" placeholder="e.g. Dhaka Medical College" value={institution} onChange={(e) => setInstitution(e.target.value)} />
-                        </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1.5">
                             <Label htmlFor="degree">Degree</Label>
@@ -575,6 +571,10 @@ export default function BecomeADoctorPage() {
                             <Label htmlFor="fieldOfStudy">Field of Study</Label>
                             <Input id="fieldOfStudy" placeholder="e.g. Medicine" value={fieldOfStudy} onChange={(e) => setFieldOfStudy(e.target.value)} />
                           </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="institution">Institution</Label>
+                          <Input id="institution" placeholder="e.g. Dhaka Medical College" value={institution} onChange={(e) => setInstitution(e.target.value)} />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1.5">

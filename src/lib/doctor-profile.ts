@@ -129,3 +129,10 @@ export function withRole(type: string | null | undefined, role: string): string 
   if (!roles.includes(upperRole)) roles.push(upperRole);
   return roles.join(", ");
 }
+
+// A name shown anywhere a person could be either a patient or a doctor
+// (community posts/comments, ratings, etc.) — prefixes "Dr." when their
+// account type says DOCTOR, same as the dashboard profile header.
+export function displayNameWithTitle(name: string, type: string | null | undefined): string {
+  return hasRole(type, "DOCTOR") ? `Dr. ${name}` : name;
+}

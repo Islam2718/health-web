@@ -1,0 +1,31 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ibnocare-grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4fbaad" />
+      <stop offset="100%" stop-color="#176e76" />
+    </linearGradient>
+  </defs>
+  <rect width="40" height="40" rx="12" fill="url(#ibnocare-grad)" />
+
+  <text
+    x="20"
+    y="18.5"
+    text-anchor="middle"
+    dominant-baseline="central"
+    fill="white"
+    font-family="system-ui, -apple-system, Segoe UI, sans-serif"
+    font-weight="800"
+    font-size="13.5"
+    letter-spacing="0.3"
+  >IBC</text>
+
+  <path
+    d="M7 29h5l1.8-4 2.6 8 2.3-9.5 2.2 5.5h11.1"
+    stroke="white"
+    stroke-opacity="0.75"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+</svg>

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useFormik } from "formik";
 import * as Yup from "yup";
 import { motion } from "motion/react";
-import { AlertCircle, Eye, EyeOff, KeyRound, LogIn, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, KeyRound, LogIn, ShieldCheck } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { AdminLoginBackground } from "@/components/admin/admin-login-background";
 import { Label } from "@/components/ui/label";
@@ -14,8 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useAdminAuth } from "@/context/admin-auth-context";
-
-const TEST_CREDENTIALS = { identifier: "01710001337", password: "123456" };
 
 const validationSchema = Yup.object({
   identifier: Yup.string().required("Phone or email is required"),
@@ -70,28 +68,13 @@ function AdminLoginForm() {
           </CardHeader>
 
           <CardContent>
-            <button
-              type="button"
-              onClick={() => {
-                formik.setValues(TEST_CREDENTIALS);
-                setAuthError(null);
-              }}
-              className="mb-6 flex w-full items-center gap-2.5 rounded-xl border border-dashed border-primary/40 bg-secondary/50 px-4 py-3 text-left text-xs text-muted-foreground transition-colors hover:border-primary/70 hover:bg-secondary"
-            >
-              <Sparkles className="size-4 shrink-0 text-primary" />
-              <span>
-                <span className="font-semibold text-foreground">Test credentials</span> —{" "}
-                {TEST_CREDENTIALS.identifier} / {TEST_CREDENTIALS.password}. Tap to autofill.
-              </span>
-            </button>
-
             <form onSubmit={formik.handleSubmit} className="space-y-5">
               <div className="space-y-1.5">
                 <Label htmlFor="identifier">Phone or Email</Label>
                 <Input
                   id="identifier"
                   name="identifier"
-                  placeholder="01710001337"
+                  placeholder="e.g. 01XXXXXXXXX or admin@example.com"
                   value={formik.values.identifier}
                   onChange={formik.handleChange}
                   onBlur={formik.handleBlur}

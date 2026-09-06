@@ -58,7 +58,9 @@ export function MedicineSearchInput({
       mode="none"
       value={value}
       onValueChange={(v) => onValueChange(v)}
-      itemToStringValue={(medicine: PublicMedicineRecord) => medicine.name}
+      itemToStringValue={(medicine: PublicMedicineRecord) =>
+        medicine.weight ? `${medicine.name} ${medicine.weight}` : medicine.name
+      }
       open={open}
       onOpenChange={setOpen}
       openOnInputClick

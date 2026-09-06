@@ -18,6 +18,15 @@ export function proxy(request: NextRequest) {
   }
 
   const token = request.cookies.get(AUTH_COOKIE)?.value;
+
+  // Already signed in — editing the URL back to /login or /register (or
+  // clicking a stale link) should land you back in the dashboard, not show
+  // the auth form again.
+  if (pathname === "/login" || pathname === "/register") {
+    if (token) return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.next();
+  }
+
   if (!token) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("from", pathname);
@@ -28,5 +37,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/admin/:path*"],
+  matcher: ["/dashboard/:path*", "/admin/:path*", "/login", "/register"],
 };

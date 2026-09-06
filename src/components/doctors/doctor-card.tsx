@@ -24,7 +24,7 @@ export function DoctorCard({ doctor, index = 0 }: { doctor: PublicDoctorRecord; 
           <div className="flex items-start gap-4">
             <div className="relative shrink-0">
               <UserAvatar
-                name={name}
+                name={doctor.user?.name?.trim() || name}
                 imageUrl={doctor.user?.profile_image}
                 gender={doctor.user?.gender}
                 className="size-16 rounded-2xl"

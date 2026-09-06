@@ -151,13 +151,23 @@
    #prescription-print-area block (built in the dashboard's Prescriptions
    tab), which itself stays display:none on screen and is only revealed
    here — a standard "isolate one element for print" pattern that avoids
-   having to sprinkle print:hidden across the header/sidebar/other tabs. */
+   having to sprinkle print:hidden across the header/sidebar/other tabs.
+
+   The order invoice (#order-invoice-print-area, built in the POS tab)
+   follows the same pattern but needs two different page sizes — an 80mm
+   thermal receipt or a full A4 sheet — chosen at print time via its
+   data-print-size attribute. CSS "named pages" (@page <name>, applied with
+   the `page` property) let one element target either page box; only
+   Chromium browsers support this, which is fine since POS printing here is
+   assumed to run on a Chrome-based till. */
 @media print {
   body * {
     visibility: hidden;
   }
   #prescription-print-area,
-  #prescription-print-area * {
+  #prescription-print-area *,
+  #order-invoice-print-area,
+  #order-invoice-print-area * {
     visibility: visible;
   }
   #prescription-print-area {
@@ -169,8 +179,34 @@
     color: #000;
     background: #fff;
   }
+  #order-invoice-print-area {
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    color: #000;
+    background: #fff;
+  }
+  #order-invoice-print-area[data-print-size="80mm"] {
+    page: invoice-80mm;
+    width: 76mm;
+    padding: 3mm;
+    font-size: 11px;
+  }
+  #order-invoice-print-area[data-print-size="a4"] {
+    page: invoice-a4;
+    width: 100%;
+    padding: 15mm;
+  }
   @page {
     size: A4;
     margin: 0;
+  }
+  @page invoice-80mm {
+    size: 80mm auto;
+    margin: 3mm;
+  }
+  @page invoice-a4 {
+    size: A4;
+    margin: 12mm;
   }
 }

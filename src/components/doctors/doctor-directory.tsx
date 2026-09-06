@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence } from "motion/react";
-import { ChevronLeft, ChevronRight, Search, SlidersHorizontal, UserRound } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Search, SlidersHorizontal, UserRound, WifiOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DoctorCard } from "@/components/doctors/doctor-card";
@@ -19,6 +19,8 @@ export function DoctorDirectory() {
   const [total, setTotal] = useState<number | null>(null);
   const [lastPage, setLastPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
 
   // Any filter change resets pagination back to page 1.
   useEffect(() => {
@@ -29,7 +31,7 @@ export function DoctorDirectory() {
     let cancelled = false;
     setLoading(true);
     const handle = setTimeout(async () => {
-      const { doctors: results, meta } = await fetchPublicDoctors({
+      const { doctors: results, meta, failed } = await fetchPublicDoctors({
         search: query.trim() || undefined,
         department: specialty !== "All" ? specialty : undefined,
         per_page: PER_PAGE,
@@ -39,13 +41,16 @@ export function DoctorDirectory() {
       setDoctors(results);
       setTotal(meta?.total ?? results.length);
       setLastPage(meta?.last_page ?? 1);
+      setLoadFailed(failed);
       setLoading(false);
     }, 350);
     return () => {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [query, specialty, page]);
+  }, [query, specialty, page, retryToken]);
+
+  const retry = useCallback(() => setRetryToken((n) => n + 1), []);
 
   return (
     <div>
@@ -93,7 +98,23 @@ export function DoctorDirectory() {
         </AnimatePresence>
       </div>
 
-      {!loading && doctors.length === 0 && (
+      {!loading && doctors.length === 0 && loadFailed && (
+        <div className="mt-16 flex flex-col items-center justify-center text-center">
+          <div className="flex size-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
+            <WifiOff className="size-6" />
+          </div>
+          <p className="mt-4 font-semibold text-foreground">Couldn&apos;t load doctors</p>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            We couldn&apos;t reach the server. Check your connection and try again.
+          </p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={retry}>
+            <RefreshCw />
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {!loading && doctors.length === 0 && !loadFailed && (
         <div className="mt-16 flex flex-col items-center justify-center text-center">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-secondary text-primary">
             <UserRound className="size-6" />

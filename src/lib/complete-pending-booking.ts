@@ -24,9 +24,9 @@ export async function completePendingBooking(token: string): Promise<boolean> {
       appointment_type: "CHAMBER",
       appointment_date: pending.appointmentDate,
       appointment_time: pending.appointmentTime,
-      status: "PENDING",
+      status: "APPOINTED",
     });
-    toast.success(`Appointment requested with ${pending.doctorName}.`);
+    toast.success(`Appointment booked with ${pending.doctorName}.`);
   } catch (err) {
     toast.error(
       err instanceof ApiError

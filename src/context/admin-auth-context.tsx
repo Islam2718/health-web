@@ -9,6 +9,7 @@ import {
   toAdminUser,
   type AdminUser,
 } from "@/lib/admin-auth";
+import { getRoles } from "@/lib/doctor-profile";
 
 function setCookie(name: string, value: string, maxAgeSeconds: number) {
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax`;
@@ -66,7 +67,10 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         body: { identifier, password },
       });
 
-      if (data.user.type?.toUpperCase() !== "ADMIN") {
+      // Same multi-role-safe parsing used everywhere else (a comma-joined
+      // type string like "USER,ADMIN" would fail a plain === check).
+      const roles = getRoles(data.user.type);
+      if (!roles.includes("ADMIN") && !roles.includes("SUPERADMIN")) {
         return { success: false, message: "This portal is for administrators only." };
       }
 

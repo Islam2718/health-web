@@ -22,6 +22,17 @@ export function fromApiTime(hms: string | null | undefined): string {
   return hms ? hms.slice(0, 5) : "";
 }
 
+// For display only — never feed this into an <input type="time">, which
+// needs fromApiTime's 24-hour "HH:MM" instead.
+export function formatTimeDisplay(hms: string | null | undefined): string {
+  if (!hms) return "";
+  const [hStr, mStr] = hms.slice(0, 5).split(":");
+  const h = Number(hStr);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${mStr} ${period}`;
+}
+
 export interface RecurrenceOptions {
   type: RecurrenceType;
   startDate: string; // YYYY-MM-DD, inclusive

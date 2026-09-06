@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Star,
   Droplet,
+  MessageCircle,
 } from "lucide-react";
 
 export const providerSlides = [
@@ -55,12 +56,12 @@ export const providerSlides = [
 ];
 
 export const careLinks = [
-  { label: "Find Doctors", href: "/doctors", icon: Stethoscope },
+  { label: "Doctors", href: "/doctors", icon: Stethoscope },
   { label: "Hospitals", href: "/hospitals", icon: Building2 },
-  { label: "Diagnostic Centres", href: "/diagnostics", icon: FlaskConical },
-  { label: "Ambulance", href: "/ambulances", icon: Ambulance },
-  { label: "Medical Store & Pharmacy", href: "/medical-store", icon: Pill },
+  { label: "Medical Tests", href: "/diagnostics", icon: FlaskConical },
+  { label: "Ambulances", href: "/ambulances", icon: Ambulance },
   { label: "Blood Donors", href: "/blood-donors", icon: Droplet },
+  { label: "Community", href: "/community", icon: MessageCircle },
 ];
 
 export const services = [

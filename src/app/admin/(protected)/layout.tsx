@@ -7,10 +7,12 @@ import { motion } from "motion/react";
 import {
   Ambulance,
   Building2,
+  Factory,
   FlaskConical,
   LayoutDashboard,
   LogOut,
   Pill,
+  PillBottle,
   Stethoscope,
   UserRound,
   Users,
@@ -44,6 +46,8 @@ const navItems = [
   { label: "Diagnostic Centres", href: "/admin/diagnostic-centres", icon: FlaskConical },
   { label: "Ambulance Service", href: "/admin/ambulances", icon: Ambulance },
   { label: "Medical Store", href: "/admin/medical-stores", icon: Pill },
+  { label: "Medicine Companies", href: "/admin/medicine-companies", icon: Factory },
+  { label: "Medicines", href: "/admin/medicines", icon: PillBottle },
   { label: "Users", href: "/admin/users", icon: Users },
 ];
 

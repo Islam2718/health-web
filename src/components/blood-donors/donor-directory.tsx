@@ -1,28 +1,46 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence } from "motion/react";
-import { Droplet, MapPin, Search } from "lucide-react";
+import { Droplet, RefreshCw, Search, WifiOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { bloodDonors, bloodGroups, donorAreas, getAvailability } from "@/lib/blood-donors-data";
+import { Button } from "@/components/ui/button";
 import { DonorCard } from "@/components/blood-donors/donor-card";
+import { fetchPublicBloodDonors, type PublicBloodDonor } from "@/lib/blood-donor";
+
+const bloodGroups = ["All", "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
 
 export function DonorDirectory() {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("All");
-  const [area, setArea] = useState("All Areas");
-  const [availableOnly, setAvailableOnly] = useState(false);
+  const [donors, setDonors] = useState<PublicBloodDonor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
 
-  const filtered = useMemo(() => {
-    return bloodDonors.filter((donor) => {
-      const matchesGroup = group === "All" || donor.bloodGroup === group;
-      const matchesArea = area === "All Areas" || donor.area === area;
-      const matchesAvailability = !availableOnly || getAvailability(donor.lastDonation).available;
-      const q = query.trim().toLowerCase();
-      const matchesQuery = !q || donor.name.toLowerCase().includes(q) || donor.area.toLowerCase().includes(q);
-      return matchesGroup && matchesArea && matchesAvailability && matchesQuery;
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchPublicBloodDonors().then(({ donors: results, failed }) => {
+      if (cancelled) return;
+      setDonors(results);
+      setLoadFailed(failed);
+      setLoading(false);
     });
-  }, [query, group, area, availableOnly]);
+    return () => {
+      cancelled = true;
+    };
+  }, [retryToken]);
+
+  const retry = useCallback(() => setRetryToken((n) => n + 1), []);
+
+  const filtered = donors.filter((donor) => {
+    const matchesGroup = group === "All" || donor.blood_group === group;
+    const q = query.trim().toLowerCase();
+    const matchesQuery =
+      !q || donor.name.toLowerCase().includes(q) || (donor.address ?? "").toLowerCase().includes(q);
+    return matchesGroup && matchesQuery;
+  });
 
   return (
     <div>
@@ -32,22 +50,10 @@ export function DonorDirectory() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by donor name or area..."
+            placeholder="Search by donor name or address..."
             className="h-11 pl-10"
           />
         </div>
-        <button
-          onClick={() => setAvailableOnly((v) => !v)}
-          className={
-            "flex h-11 shrink-0 items-center gap-2 rounded-lg border px-4 text-sm font-medium transition-colors " +
-            (availableOnly
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground")
-          }
-        >
-          <Droplet className="size-4" />
-          Available Now Only
-        </button>
       </div>
 
       <div className="mt-5 flex items-center gap-2 overflow-x-auto pb-2">
@@ -68,26 +74,8 @@ export function DonorDirectory() {
         ))}
       </div>
 
-      <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-2">
-        <MapPin className="mr-1 size-4 shrink-0 text-muted-foreground" />
-        {donorAreas.map((a) => (
-          <button
-            key={a}
-            onClick={() => setArea(a)}
-            className={
-              "shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors " +
-              (area === a
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground")
-            }
-          >
-            {a}
-          </button>
-        ))}
-      </div>
-
       <p className="mt-5 text-sm text-muted-foreground">
-        {filtered.length} donor{filtered.length !== 1 ? "s" : ""} found
+        {loading ? "Searching..." : `${filtered.length} donor${filtered.length !== 1 ? "s" : ""} found`}
       </p>
 
       <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -98,14 +86,30 @@ export function DonorDirectory() {
         </AnimatePresence>
       </div>
 
-      {filtered.length === 0 && (
+      {!loading && filtered.length === 0 && loadFailed && (
+        <div className="mt-16 flex flex-col items-center justify-center text-center">
+          <div className="flex size-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
+            <WifiOff className="size-6" />
+          </div>
+          <p className="mt-4 font-semibold text-foreground">Couldn&apos;t load donors</p>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            We couldn&apos;t reach the server. Check your connection and try again.
+          </p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={retry}>
+            <RefreshCw />
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {!loading && filtered.length === 0 && !loadFailed && (
         <div className="mt-16 flex flex-col items-center justify-center text-center">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-secondary text-primary">
             <Droplet className="size-6" />
           </div>
           <p className="mt-4 font-semibold text-foreground">No donors found</p>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Try a different blood group, area, or search term.
+            Try a different blood group or search term.
           </p>
         </div>
       )}

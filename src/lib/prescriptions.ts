@@ -1,5 +1,5 @@
-import { apiFetch } from "@/lib/api-client";
-import type { AppointmentType } from "@/lib/patient-lookup";
+import { apiFetch, type ApiUser } from "@/lib/api-client";
+import type { AppointmentChamberSummary, AppointmentRecord, AppointmentType } from "@/lib/patient-lookup";
 
 export interface MedicineEntry {
   name: string;
@@ -82,5 +82,41 @@ export async function fetchAppointmentPrescription(
     return res?.data ?? null;
   } catch {
     return null;
+  }
+}
+
+interface MyPrescriptionScheduleSummary {
+  id: number;
+  user_id: number;
+  chamber_id: number;
+  date: string;
+  start_time: string;
+  end_time: string;
+  slot_duration: number;
+  max_patients: number;
+  consultation_fee: number | string | null;
+  is_active: boolean;
+}
+
+// GET /my-prescriptions — a dedicated endpoint scoped to "the authenticated
+// patient", distinct from /appointment-prescriptions (a doctor's own issued
+// list). Unlike that one, this comes back fully hydrated: nested `doctor` /
+// `patient` (full ApiUser, not user_doctor/user_patient like the appointments
+// endpoint), `appointment`, `schedule`, and `chamber` — no need to
+// cross-reference the appointments list to label who issued it.
+export interface MyPrescriptionRecord extends AppointmentPrescriptionRecord {
+  appointment?: AppointmentRecord | null;
+  doctor?: ApiUser | null;
+  patient?: ApiUser | null;
+  schedule?: MyPrescriptionScheduleSummary | null;
+  chamber?: AppointmentChamberSummary | null;
+}
+
+export async function fetchMyPrescriptions(token: string): Promise<MyPrescriptionRecord[]> {
+  try {
+    const res = await apiFetch<{ data: MyPrescriptionRecord[] }>("/my-prescriptions", { token });
+    return res?.data ?? [];
+  } catch {
+    return [];
   }
 }

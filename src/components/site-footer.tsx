@@ -10,6 +10,7 @@ const footerLinks = {
     { label: "Ambulance", href: "/ambulances" },
     { label: "Diagnostics", href: "/diagnostics" },
     { label: "Pharmacy", href: "/medical-store" },
+    { label: "Community", href: "/community" },
   ],
   Company: [
     { label: "About Us", href: "#" },

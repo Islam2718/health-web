@@ -55,3 +55,126 @@ export async function fetchPublicMedicines(
     return [];
   }
 }
+
+// ---------------------------------------------------------------------------
+// Admin (Bearer-authenticated) CRUD for both resources. A medicine always
+// belongs to a company via company_id, so the company side is managed first.
+//
+// The docs' response schema panels for medicine-companies.index/store/show
+// and medicines.index/store/show all render as a bare `data: string` — the
+// same broken/collapsed-schema rendering quirk seen elsewhere in this API's
+// docs (no real response sample was available to double check). Modeled
+// below as `{ data: Resource }` / `{ data: Resource[] }`, matching the
+// convention used by every other confirmed resource in this API.
+// ---------------------------------------------------------------------------
+
+export interface MedicineCompanyPayload {
+  name: string;
+  logo?: string;
+  address?: string;
+  license_number?: string;
+  about?: string;
+}
+
+export async function fetchMedicineCompanies(
+  token: string
+): Promise<{ companies: MedicineCompany[]; failed: boolean }> {
+  try {
+    const res = await apiFetch<{ data: MedicineCompany[] }>("/medicine-companies", { token });
+    return { companies: res?.data ?? [], failed: false };
+  } catch {
+    return { companies: [], failed: true };
+  }
+}
+
+export async function fetchMedicineCompany(token: string, id: number | string): Promise<MedicineCompany | null> {
+  try {
+    const res = await apiFetch<{ data: MedicineCompany }>(`/medicine-companies/${id}`, { token });
+    return res?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function createMedicineCompany(
+  token: string,
+  payload: MedicineCompanyPayload
+): Promise<MedicineCompany> {
+  const res = await apiFetch<{ message: string; data: MedicineCompany }>("/medicine-companies", {
+    method: "POST",
+    token,
+    body: payload,
+  });
+  return res.data;
+}
+
+export async function updateMedicineCompany(
+  token: string,
+  id: number | string,
+  payload: MedicineCompanyPayload
+): Promise<MedicineCompany> {
+  const res = await apiFetch<{ message: string; data: MedicineCompany }>(`/medicine-companies/${id}`, {
+    method: "PUT",
+    token,
+    body: payload,
+  });
+  return res.data;
+}
+
+export async function deleteMedicineCompany(token: string, id: number | string): Promise<void> {
+  await apiFetch<{ message: string }>(`/medicine-companies/${id}`, { method: "DELETE", token });
+}
+
+export interface MedicinePayload {
+  name: string;
+  generic_name?: string;
+  weight?: string;
+  suggestion_price?: number;
+  type?: string;
+  description?: string;
+  company_id: number;
+}
+
+export async function fetchMedicines(token: string): Promise<{ medicines: PublicMedicineRecord[]; failed: boolean }> {
+  try {
+    const res = await apiFetch<{ data: PublicMedicineRecord[] }>("/medicines", { token });
+    return { medicines: res?.data ?? [], failed: false };
+  } catch {
+    return { medicines: [], failed: true };
+  }
+}
+
+export async function fetchMedicine(token: string, id: number | string): Promise<PublicMedicineRecord | null> {
+  try {
+    const res = await apiFetch<{ data: PublicMedicineRecord }>(`/medicines/${id}`, { token });
+    return res?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function createMedicine(token: string, payload: MedicinePayload): Promise<PublicMedicineRecord> {
+  const res = await apiFetch<{ message: string; data: PublicMedicineRecord }>("/medicines", {
+    method: "POST",
+    token,
+    body: payload,
+  });
+  return res.data;
+}
+
+export async function updateMedicine(
+  token: string,
+  id: number | string,
+  payload: MedicinePayload
+): Promise<PublicMedicineRecord> {
+  const res = await apiFetch<{ message: string; data: PublicMedicineRecord }>(`/medicines/${id}`, {
+    method: "PUT",
+    token,
+    body: payload,
+  });
+  return res.data;
+}
+
+export async function deleteMedicine(token: string, id: number | string): Promise<void> {
+  await apiFetch<{ message: string }>(`/medicines/${id}`, { method: "DELETE", token });
+}

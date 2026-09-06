@@ -11,6 +11,9 @@ import {
   type ProfileUpdatePayload,
 } from "@/lib/auth";
 import { withRole } from "@/lib/doctor-profile";
+import { fetchMyDonorInterest } from "@/lib/blood-donor";
+import { fetchMyAmbulances } from "@/lib/ambulances";
+import { fetchStores } from "@/lib/stores";
 
 function setCookie(name: string, value: string, maxAgeSeconds: number) {
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax`;
@@ -46,6 +49,18 @@ interface AuthContextValue {
   updateProfile: (payload: ProfileUpdatePayload) => Promise<LoginResult>;
   applySession: (data: LoginApiResponse) => void;
   addRole: (role: string) => void;
+  // Cached here (not in the dashboard page's own state) specifically so it
+  // survives navigating away and back — AuthProvider lives in the root
+  // layout and never unmounts on in-app navigation, unlike the dashboard
+  // page itself, which was re-fetching (and briefly showing "not a
+  // donor/owner") every time a visitor came back to it.
+  isBloodDonor: boolean;
+  hasAmbulance: boolean;
+  hasStore: boolean;
+  storeId: number | null;
+  setIsBloodDonor: (value: boolean) => void;
+  setHasAmbulance: (value: boolean) => void;
+  setStore: (id: number | null) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -55,15 +70,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionStartedAt, setSessionStartedAt] = useState<Date | null>(null);
+  const [isBloodDonor, setIsBloodDonor] = useState(false);
+  const [hasAmbulance, setHasAmbulance] = useState(false);
+  const [storeId, setStoreId] = useState<number | null>(null);
+
+  const setStore = (id: number | null) => setStoreId(id);
+
+  // Fetched once per session (here, not on every dashboard mount) so it's
+  // already correct by the time a visitor first reaches the dashboard, and
+  // stays correct on every subsequent visit without a refetch.
+  const primeDonorAndAmbulanceStatus = (sessionToken: string, userId: number) => {
+    fetchMyDonorInterest(sessionToken, userId).then(setIsBloodDonor);
+    fetchMyAmbulances(sessionToken).then((list) => setHasAmbulance(list.length > 0));
+    // A user can only manage one store from the dashboard (same "singular
+    // profile" shape as the doctor record), so this just takes the first.
+    fetchStores(sessionToken).then(({ stores }) => setStoreId(stores[0]?.id ?? null));
+  };
 
   useEffect(() => {
     const storedToken = getCookie(AUTH_COOKIE);
     const storedUser = getCookie(USER_COOKIE);
     if (storedToken && storedUser) {
       try {
-        setUser(JSON.parse(storedUser) as AppUser);
+        const account = JSON.parse(storedUser) as AppUser;
+        setUser(account);
         setToken(storedToken);
         setSessionStartedAt(new Date());
+        primeDonorAndAmbulanceStatus(storedToken, account.id);
       } catch {
         deleteCookie(AUTH_COOKIE);
         deleteCookie(USER_COOKIE);
@@ -79,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(account);
     setToken(data.token);
     setSessionStartedAt(new Date());
+    primeDonorAndAmbulanceStatus(data.token, account.id);
   };
 
   const login = async (identifier: string, password: string): Promise<LoginResult> => {
@@ -111,6 +145,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setToken(null);
     setSessionStartedAt(null);
+    setIsBloodDonor(false);
+    setHasAmbulance(false);
+    setStoreId(null);
   };
 
   const updateProfile = async (payload: ProfileUpdatePayload): Promise<LoginResult> => {
@@ -163,6 +200,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateProfile,
         applySession,
         addRole,
+        isBloodDonor,
+        hasAmbulance,
+        hasStore: storeId != null,
+        storeId,
+        setIsBloodDonor,
+        setHasAmbulance,
+        setStore,
       }}
     >
       {children}
