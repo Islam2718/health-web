@@ -12,6 +12,12 @@ interface MedicineSearchInputProps {
   onSelectMedicine: (medicine: PublicMedicineRecord) => void;
   placeholder?: string;
   className?: string;
+  // Ids to visually mark as already-added (e.g. a medicine the store already
+  // stocks). Still clickable — the caller's onSelectMedicine decides what
+  // happens (typically a toast explaining why it's not pickable again)
+  // rather than the item silently ignoring the click.
+  disabledIds?: Set<number>;
+  disabledHint?: string;
 }
 
 // A live search-as-you-type combobox against GET /medicines/public — the
@@ -26,6 +32,8 @@ export function MedicineSearchInput({
   onSelectMedicine,
   placeholder,
   className,
+  disabledIds,
+  disabledHint = "Already added",
 }: MedicineSearchInputProps) {
   const [results, setResults] = useState<PublicMedicineRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -83,25 +91,37 @@ export function MedicineSearchInput({
                   {value.trim().length < 2 ? "Type at least 2 characters to search." : "No medicines found."}
                 </Autocomplete.Empty>
                 <Autocomplete.List>
-                  {(medicine: PublicMedicineRecord) => (
-                    <Autocomplete.Item
-                      key={medicine.id}
-                      value={medicine}
-                      onClick={() => {
-                        onSelectMedicine(medicine);
-                        setOpen(false);
-                      }}
-                      className={cn(
-                        "flex cursor-default flex-col gap-0.5 px-3 py-2 text-sm outline-hidden select-none",
-                        "hover:bg-accent hover:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                      )}
-                    >
-                      <span className="font-medium text-foreground">{medicine.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {[medicine.generic_name, medicine.weight, medicine.company?.name].filter(Boolean).join(" · ")}
-                      </span>
-                    </Autocomplete.Item>
-                  )}
+                  {(medicine: PublicMedicineRecord) => {
+                    const isDisabled = disabledIds?.has(medicine.id) ?? false;
+                    return (
+                      <Autocomplete.Item
+                        key={medicine.id}
+                        value={medicine}
+                        onClick={() => {
+                          onSelectMedicine(medicine);
+                          if (!isDisabled) setOpen(false);
+                        }}
+                        className={cn(
+                          "flex cursor-default flex-col gap-0.5 px-3 py-2 text-sm outline-hidden select-none",
+                          isDisabled
+                            ? "opacity-50 hover:bg-transparent data-[highlighted]:bg-transparent"
+                            : "hover:bg-accent hover:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                        )}
+                      >
+                        <span className="flex items-center gap-2 font-medium text-foreground">
+                          {medicine.name}
+                          {isDisabled && (
+                            <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground">
+                              {disabledHint}
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {[medicine.generic_name, medicine.weight, medicine.company?.name].filter(Boolean).join(" · ")}
+                        </span>
+                      </Autocomplete.Item>
+                    );
+                  }}
                 </Autocomplete.List>
               </>
             )}

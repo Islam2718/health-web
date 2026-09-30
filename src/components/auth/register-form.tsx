@@ -67,6 +67,11 @@ export function RegisterForm() {
   const passwordValue = watch("password") ?? "";
   const strength = getPasswordStrength(passwordValue);
 
+  const redirectAfterAuth = async (token: string) => {
+    const handled = await completePendingBooking(token);
+    router.push(handled ? "/dashboard?tab=appointments" : "/dashboard");
+  };
+
   const onSubmit = async (values: RegisterValues) => {
     const phone = values.phone?.trim();
     const email = values.email?.trim();
@@ -95,9 +100,7 @@ export function RegisterForm() {
       // to make the user sign in again.
       applySession(data);
       toast.success(data.message ?? "Account created successfully");
-
-      const handled = await completePendingBooking(data.token);
-      router.push(handled ? "/dashboard?tab=appointments" : "/dashboard");
+      await redirectAfterAuth(data.token);
     } catch (err) {
       if (err instanceof ApiError) {
         const body = err.body as { errors?: Record<string, string[]> } | null;
@@ -123,7 +126,7 @@ export function RegisterForm() {
               </p>
 
               <div className="mt-6">
-                <SocialButtons />
+                <SocialButtons onAuthenticated={redirectAfterAuth} />
               </div>
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">

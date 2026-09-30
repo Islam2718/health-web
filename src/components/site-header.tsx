@@ -7,7 +7,6 @@ import { motion } from "motion/react";
 import {
   Ambulance,
   CalendarDays,
-  ClipboardList,
   Droplet,
   FileText,
   FlaskConical,
@@ -15,9 +14,6 @@ import {
   LogOut,
   Menu,
   MessageCircle,
-  Pill,
-  Receipt,
-  ShoppingCart,
   Sparkles,
   Store,
   User,
@@ -148,28 +144,10 @@ export function SiteHeader() {
                       </DropdownMenuItem>
                     )}
                     {hasStore && (
-                      <>
-                        <DropdownMenuItem render={<Link href="/dashboard?tab=store" />}>
-                          <Store className="size-4 text-primary" />
-                          Shop
-                        </DropdownMenuItem>
-                        <DropdownMenuItem render={<Link href="/dashboard?tab=store-products" />}>
-                          <Pill className="size-4 text-primary" />
-                          Products
-                        </DropdownMenuItem>
-                        <DropdownMenuItem render={<Link href="/dashboard?tab=store-stock" />}>
-                          <Receipt className="size-4 text-primary" />
-                          Stock
-                        </DropdownMenuItem>
-                        <DropdownMenuItem render={<Link href="/dashboard?tab=pos" />}>
-                          <ShoppingCart className="size-4 text-primary" />
-                          POS
-                        </DropdownMenuItem>
-                        <DropdownMenuItem render={<Link href="/dashboard?tab=store-orders" />}>
-                          <ClipboardList className="size-4 text-primary" />
-                          My Orders
-                        </DropdownMenuItem>
-                      </>
+                      <DropdownMenuItem render={<Link href="/dashboard/store" />}>
+                        <Store className="size-4 text-primary" />
+                        Store Tools
+                      </DropdownMenuItem>
                     )}
                   </>
                 )}
@@ -300,43 +278,13 @@ export function SiteHeader() {
                         </Button>
                       )}
                       {hasStore && (
-                        <>
-                          <Button
-                            variant="outline"
-                            nativeButton={false}
-                            render={<Link href="/dashboard?tab=store" onClick={() => setOpen(false)} />}
-                          >
-                            <Store /> Shop
-                          </Button>
-                          <Button
-                            variant="outline"
-                            nativeButton={false}
-                            render={<Link href="/dashboard?tab=store-products" onClick={() => setOpen(false)} />}
-                          >
-                            <Pill /> Products
-                          </Button>
-                          <Button
-                            variant="outline"
-                            nativeButton={false}
-                            render={<Link href="/dashboard?tab=store-stock" onClick={() => setOpen(false)} />}
-                          >
-                            <Receipt /> Stock
-                          </Button>
-                          <Button
-                            variant="outline"
-                            nativeButton={false}
-                            render={<Link href="/dashboard?tab=pos" onClick={() => setOpen(false)} />}
-                          >
-                            <ShoppingCart /> POS
-                          </Button>
-                          <Button
-                            variant="outline"
-                            nativeButton={false}
-                            render={<Link href="/dashboard?tab=store-orders" onClick={() => setOpen(false)} />}
-                          >
-                            <ClipboardList /> My Orders
-                          </Button>
-                        </>
+                        <Button
+                          variant="outline"
+                          nativeButton={false}
+                          render={<Link href="/dashboard/store" onClick={() => setOpen(false)} />}
+                        >
+                          <Store /> Store Tools
+                        </Button>
                       )}
                     </>
                   )}

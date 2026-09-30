@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   Activity,
   Ambulance,
+  ArrowLeft,
   BadgeCheck,
   BarChart3,
   Building2,
@@ -17,7 +18,6 @@ import {
   CalendarDays,
   CalendarPlus,
   ChevronDown,
-  ClipboardList,
   Clock,
   Droplet,
   Eye,
@@ -27,16 +27,12 @@ import {
   LogOut,
   MapPin,
   MessageCircle,
-  Minus,
   Pencil,
   Phone,
   Pill,
   Plus,
   Printer,
-  Receipt,
-  RefreshCw,
   Search,
-  ShoppingCart,
   Star,
   Stethoscope,
   Store,
@@ -71,7 +67,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/context/auth-context";
-import { apiFetch, ApiError, type ApiUser } from "@/lib/api-client";
+import { apiFetch, extractApiErrorMessage, type ApiUser } from "@/lib/api-client";
 import {
   findPatientByPhone,
   findOrCreatePatientByPhone,
@@ -117,31 +113,9 @@ import {
   type AmbulanceType,
 } from "@/lib/ambulances";
 import { TagInput } from "@/components/admin/tag-input";
-import {
-  fetchStores,
-  createStore,
-  updateStore,
-  fetchStoreProducts,
-  createStoreProduct,
-  updateStoreProduct,
-  deleteStoreProduct,
-  fetchStoreStocks,
-  createStoreStock,
-  createOrder,
-  fetchOrders,
-  updateOrderStatus,
-  STOCK_TRANSACTION_TYPES,
-  ORDER_STATUS_OPTIONS,
-  type StoreRecord,
-  type StoreProductRecord,
-  type StoreStockRecord,
-  type StockTransactionType,
-  type OrderRecord,
-  type OrderStatus,
-} from "@/lib/stores";
-import { findCustomerByPhone, createCustomerByPhone } from "@/lib/customers";
 import { bloodGroupOptions } from "@/lib/patients-data";
 import { cn } from "@/lib/utils";
+import { formatDateForDisplay } from "@/lib/format";
 import {
   fetchMyChambers,
   fetchMyDoctorProfile,
@@ -202,14 +176,19 @@ const appointmentBorderStyles: Record<string, string> = {
   EXPIRED: "border-l-border",
 };
 
-const orderStatusStyles: Record<OrderStatus, string> = {
-  pending: "bg-secondary text-secondary-foreground",
-  confirmed: "bg-primary/10 text-primary",
-  processing: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  shipped: "bg-sky-500/10 text-sky-700 dark:text-sky-400",
-  delivered: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  cancelled: "bg-destructive/10 text-destructive",
-};
+// Shown in a Card's own header row, top-right, only while its add/edit form
+// is open (replacing the Add/Edit button that hides in that state) — the
+// list view itself never shows this, only the "child" form state does.
+// Functionally identical to that form's Cancel button, just reachable
+// without scrolling down to it.
+function BackToList({ onClick }: { onClick: () => void }) {
+  return (
+    <Button variant="outline" size="sm" className="shrink-0" onClick={onClick}>
+      <ArrowLeft />
+      Back
+    </Button>
+  );
+}
 
 type TabKey =
   | "profile"
@@ -222,12 +201,7 @@ type TabKey =
   | "my-prescriptions"
   | "posts"
   | "blood-donor"
-  | "ambulances"
-  | "store"
-  | "store-products"
-  | "store-stock"
-  | "pos"
-  | "store-orders";
+  | "ambulances";
 
 type NavItem = { key: TabKey; label: string; icon: typeof UserIcon };
 
@@ -267,19 +241,13 @@ const doctorToolsNavItems: NavItem[] = [
   { key: "chamber", label: "Chamber", icon: Building2 },
 ];
 
-// Ambulance and Store each get their own labeled section (same visual
-// treatment as Doctor Tools above) instead of being flat items mixed into
-// the personal list — both only show up once the user actually has one.
+// Ambulance gets its own labeled section (same visual treatment as Doctor
+// Tools above) instead of being a flat item mixed into the personal list —
+// it only shows up once the user actually has one. Store Tools moved out
+// to its own routed section at /dashboard/store/* (see that route's own
+// layout) instead of living here as tab state.
 const ambulanceToolsNavItems: NavItem[] = [
   { key: "ambulances", label: "My Ambulances", icon: Ambulance },
-];
-
-const storeToolsNavItems: NavItem[] = [
-  { key: "store", label: "Shop", icon: Store },
-  { key: "store-products", label: "Products", icon: Pill },
-  { key: "store-stock", label: "Stock", icon: Receipt },
-  { key: "pos", label: "POS", icon: ShoppingCart },
-  { key: "store-orders", label: "My Orders", icon: ClipboardList },
 ];
 
 const ALL_TAB_KEYS: TabKey[] = [
@@ -294,11 +262,6 @@ const ALL_TAB_KEYS: TabKey[] = [
   "posts",
   "blood-donor",
   "ambulances",
-  "store",
-  "store-products",
-  "store-stock",
-  "pos",
-  "store-orders",
 ];
 
 // Index matches JS Date#getDay() (0 = Sunday .. 6 = Saturday).
@@ -336,11 +299,6 @@ const MEDICINE_TIMING_OPTIONS = [
 function getCurrentTimeHHMM(): string {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
-function formatDateForDisplay(dateStr: string): string {
-  const d = new Date(`${dateStr}T00:00:00`);
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 }
 
 // Groups an appointment list under "Today" / "Tomorrow" / a full date, in
@@ -429,10 +387,8 @@ function DashboardPageInner() {
     isBloodDonor,
     hasAmbulance,
     hasStore,
-    storeId: contextStoreId,
     setIsBloodDonor,
     setHasAmbulance,
-    setStore,
   } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -615,82 +571,6 @@ function DashboardPageInner() {
   const [confirmDeleteAmbulanceId, setConfirmDeleteAmbulanceId] = useState<number | null>(null);
   const [deletingAmbulanceId, setDeletingAmbulanceId] = useState<number | null>(null);
 
-  // My Store tab — register a store, add medicines to it as store products,
-  // log stock transactions against each, and sell via the POS tab below.
-  const [myStore, setMyStore] = useState<StoreRecord | null>(null);
-  const [myStoreLoading, setMyStoreLoading] = useState(true);
-  const [storeFormOpen, setStoreFormOpen] = useState(false);
-  const [storeName, setStoreName] = useState("");
-  const [storeAddress, setStoreAddress] = useState("");
-  const [storeLicense, setStoreLicense] = useState("");
-  const [storePhone, setStorePhone] = useState("");
-  const [storeEmail, setStoreEmail] = useState("");
-  const [storeDescription, setStoreDescription] = useState("");
-  const [savingStore, setSavingStore] = useState(false);
-
-  const [storeProducts, setStoreProducts] = useState<StoreProductRecord[]>([]);
-  const [storeProductsLoading, setStoreProductsLoading] = useState(true);
-  const [productFormOpen, setProductFormOpen] = useState<"new" | number | null>(null);
-  const [productMedicineId, setProductMedicineId] = useState<number | null>(null);
-  const [productMedicineQuery, setProductMedicineQuery] = useState("");
-  const [productBuyPrice, setProductBuyPrice] = useState("");
-  const [productSalePrice, setProductSalePrice] = useState("");
-  const [productWholesalePrice, setProductWholesalePrice] = useState("");
-  const [productMinStock, setProductMinStock] = useState("");
-  const [productIsActive, setProductIsActive] = useState(true);
-  const [savingProduct, setSavingProduct] = useState(false);
-  const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<number | null>(null);
-  const [deletingProductId, setDeletingProductId] = useState<number | null>(null);
-
-  const [storeStocks, setStoreStocks] = useState<StoreStockRecord[]>([]);
-  const [storeStocksLoading, setStoreStocksLoading] = useState(true);
-  const [stockFormOpen, setStockFormOpen] = useState(false);
-  const [stockProductId, setStockProductId] = useState("");
-  const [stockQuantity, setStockQuantity] = useState("1");
-  const [stockType, setStockType] = useState<StockTransactionType>("purchase");
-  const [stockUnitPrice, setStockUnitPrice] = useState("");
-  const [stockRemarks, setStockRemarks] = useState("");
-  const [stockDate, setStockDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [savingStock, setSavingStock] = useState(false);
-
-  // POS tab — a cart against the store's own active products, checked out
-  // through the real Order API.
-  const [posQuery, setPosQuery] = useState("");
-  const [posCart, setPosCart] = useState<{ productId: number; name: string; price: number; qty: number }[]>([]);
-  const [posPaymentMethod, setPosPaymentMethod] = useState("Cash");
-  const [posDiscount, setPosDiscount] = useState("");
-  const [posDeliveryFee, setPosDeliveryFee] = useState("");
-  const [posNotes, setPosNotes] = useState("");
-  const [posSubmitting, setPosSubmitting] = useState(false);
-  const [lastOrder, setLastOrder] = useState<OrderRecord | null>(null);
-  // Snapshot of whoever the customer was at checkout time — the Order API
-  // only echoes back a bare customer_id, no nested name/address, so this is
-  // the only way the invoice can print a customer name at all.
-  const [lastOrderCustomer, setLastOrderCustomer] = useState<ApiUser | null>(null);
-  // Which invoice size to render for print — set right before window.print()
-  // fires, cleared again on afterprint (same pattern already proven for the
-  // prescription print area).
-  const [printInvoiceMode, setPrintInvoiceMode] = useState<"80mm" | "a4" | null>(null);
-
-  // POS customer step — search-by-phone first, offer to register on the spot
-  // if nothing matches. Entirely optional: an empty phone means a walk-in
-  // sale with no customer_id sent at all.
-  const [posCustomerPhone, setPosCustomerPhone] = useState("");
-  const [posCustomer, setPosCustomer] = useState<ApiUser | null>(null);
-  const [posCustomerLoading, setPosCustomerLoading] = useState(false);
-  const [posCustomerNotFound, setPosCustomerNotFound] = useState(false);
-  const [posNewCustomerName, setPosNewCustomerName] = useState("");
-  const [posCustomerCreating, setPosCustomerCreating] = useState(false);
-
-  // My Orders tab — the store's order history, plus a details dialog with
-  // status updates (same "View Details" modal shape used for prescriptions).
-  const [storeOrders, setStoreOrders] = useState<OrderRecord[]>([]);
-  const [storeOrdersLoading, setStoreOrdersLoading] = useState(true);
-  const [storeOrdersFailed, setStoreOrdersFailed] = useState(false);
-  const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatus | "all">("all");
-  const [orderDetailsView, setOrderDetailsView] = useState<OrderRecord | null>(null);
-  const [updatingOrderStatus, setUpdatingOrderStatus] = useState(false);
-
   const [doctorStatus, setDoctorStatus] = useState<{
     hasDoctorProfile: boolean;
     hasEducation: boolean;
@@ -790,23 +670,6 @@ function DashboardPageInner() {
   }, [user, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!user || !token) return;
-    refreshMyStore();
-  }, [user, token]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!token || !myStore) {
-      setStoreProductsLoading(false);
-      setStoreStocksLoading(false);
-      setStoreOrdersLoading(false);
-      return;
-    }
-    refreshStoreProducts();
-    refreshStoreStocks();
-    refreshStoreOrders();
-  }, [token, myStore?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
     if (!viewingPrescription) return;
     window.print();
     // Clear it once the print dialog closes (printed or cancelled) so
@@ -816,25 +679,6 @@ function DashboardPageInner() {
     window.addEventListener("afterprint", clear);
     return () => window.removeEventListener("afterprint", clear);
   }, [viewingPrescription]);
-
-  useEffect(() => {
-    if (!printInvoiceMode) return;
-    window.print();
-    const clear = () => setPrintInvoiceMode(null);
-    window.addEventListener("afterprint", clear);
-    return () => window.removeEventListener("afterprint", clear);
-  }, [printInvoiceMode]);
-
-  // Auto-search once a full phone number has been typed, so a compounder
-  // can just type the number and see the match without an extra click —
-  // Enter or the search button still work immediately for anyone who
-  // doesn't want to wait out the debounce.
-  useEffect(() => {
-    const phone = posCustomerPhone.trim();
-    if (posCustomer || phone.length < 10) return;
-    const handle = setTimeout(() => searchPosCustomer(), 500);
-    return () => clearTimeout(handle);
-  }, [posCustomerPhone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const scheduleChamber = chambers.find((c) => c.id === scheduleChamberId) ?? null;
   const chamberSchedules = schedules
@@ -1173,14 +1017,6 @@ function DashboardPageInner() {
     setChamberFormOpen(c.id);
   };
 
-  const extractApiErrorMessage = (err: unknown, fallback: string) => {
-    if (err instanceof ApiError) {
-      const body = err.body as { errors?: Record<string, string[]> } | null;
-      return body?.errors ? (Object.values(body.errors)[0]?.[0] ?? err.message) : err.message;
-    }
-    return fallback;
-  };
-
   const saveChamber = async () => {
     if (!token) return;
     if (!chamberName.trim()) {
@@ -1259,11 +1095,6 @@ function DashboardPageInner() {
       "posts",
       "blood-donor",
       "ambulances",
-      "store",
-      "store-products",
-      "store-stock",
-      "pos",
-      "store-orders",
     ];
     const allowed = tab === "profile" || isPatient || (isDoctor && allowedDoctorTabs.includes(tab ?? ""));
     if (tab && allowed && (ALL_TAB_KEYS as string[]).includes(tab)) {
@@ -1696,359 +1527,6 @@ function DashboardPageInner() {
       setDeletingAmbulanceId(null);
       setConfirmDeleteAmbulanceId(null);
     }
-  };
-
-  const refreshMyStore = async () => {
-    if (!token) return;
-    setMyStoreLoading(true);
-    const { stores } = await fetchStores(token);
-    const store = stores[0] ?? null;
-    setMyStore(store);
-    setStore(store?.id ?? null);
-    if (store) {
-      setStoreName(store.store_name);
-      setStoreAddress(store.store_address);
-      setStoreLicense(store.trade_license_no);
-      setStorePhone(store.phone ?? "");
-      setStoreEmail(store.email ?? "");
-      setStoreDescription(store.description ?? "");
-    }
-    setMyStoreLoading(false);
-  };
-
-  const openCreateStoreForm = () => {
-    setStoreName("");
-    setStoreAddress("");
-    setStoreLicense("");
-    setStorePhone(user?.phone ?? "");
-    setStoreEmail(user?.email ?? "");
-    setStoreDescription("");
-    setStoreFormOpen(true);
-  };
-
-  const openEditStoreForm = () => {
-    if (!myStore) return;
-    setStoreName(myStore.store_name);
-    setStoreAddress(myStore.store_address);
-    setStoreLicense(myStore.trade_license_no);
-    setStorePhone(myStore.phone ?? "");
-    setStoreEmail(myStore.email ?? "");
-    setStoreDescription(myStore.description ?? "");
-    setStoreFormOpen(true);
-  };
-
-  const saveStore = async () => {
-    if (!token) return;
-    if (!storeName.trim() || !storeAddress.trim() || !storeLicense.trim()) {
-      toast.error("Store name, address, and trade license number are required.");
-      return;
-    }
-    setSavingStore(true);
-    try {
-      const payload = {
-        store_name: storeName.trim(),
-        store_address: storeAddress.trim(),
-        trade_license_no: storeLicense.trim(),
-        phone: storePhone.trim() || undefined,
-        email: storeEmail.trim() || undefined,
-        description: storeDescription.trim() || undefined,
-      };
-      const saved = myStore
-        ? await updateStore(token, myStore.id, payload)
-        : await createStore(token, payload);
-      setMyStore(saved);
-      setStore(saved.id);
-      toast.success(myStore ? "Store updated" : "Store registered");
-      setStoreFormOpen(false);
-    } catch (err) {
-      toast.error(extractApiErrorMessage(err, "Could not save your store."));
-    } finally {
-      setSavingStore(false);
-    }
-  };
-
-  const refreshStoreProducts = async () => {
-    if (!token || !myStore) return;
-    setStoreProductsLoading(true);
-    const { products } = await fetchStoreProducts(token, myStore.id);
-    setStoreProducts(products);
-    setStoreProductsLoading(false);
-  };
-
-  const openNewProductForm = () => {
-    setProductMedicineId(null);
-    setProductMedicineQuery("");
-    setProductBuyPrice("");
-    setProductSalePrice("");
-    setProductWholesalePrice("");
-    setProductMinStock("");
-    setProductIsActive(true);
-    setProductFormOpen("new");
-  };
-
-  const openEditProductForm = (p: StoreProductRecord) => {
-    setProductMedicineId(p.medicine_id);
-    setProductMedicineQuery(p.medicine_name ?? "");
-    setProductBuyPrice(String(p.buy_price));
-    setProductSalePrice(String(p.sale_price));
-    setProductWholesalePrice(String(p.wholesale_price));
-    setProductMinStock(p.minimum_stock != null ? String(p.minimum_stock) : "");
-    setProductIsActive(p.is_active);
-    setProductFormOpen(p.id);
-  };
-
-  const saveProduct = async () => {
-    if (!token || !myStore) return;
-    if (!productMedicineId) {
-      toast.error("Search and select a medicine first.");
-      return;
-    }
-    if (!productBuyPrice.trim() || !productSalePrice.trim() || !productWholesalePrice.trim()) {
-      toast.error("Enter buy, sale, and wholesale prices.");
-      return;
-    }
-    setSavingProduct(true);
-    const isEditing = typeof productFormOpen === "number";
-    try {
-      const payload = {
-        medicine_id: productMedicineId,
-        buy_price: Number(productBuyPrice),
-        sale_price: Number(productSalePrice),
-        wholesale_price: Number(productWholesalePrice),
-        minimum_stock: productMinStock.trim() ? Number(productMinStock) : undefined,
-        is_active: productIsActive,
-      };
-      const saved = isEditing
-        ? await updateStoreProduct(token, myStore.id, productFormOpen as number, payload)
-        : await createStoreProduct(token, myStore.id, payload);
-      setStoreProducts((list) =>
-        isEditing ? list.map((p) => (p.id === saved.id ? saved : p)) : [saved, ...list]
-      );
-      toast.success(isEditing ? "Product updated" : "Product added to store");
-      setProductFormOpen(null);
-
-      if (!isEditing) {
-        // A brand-new product has zero stock — send the user straight into
-        // logging its first stock entry instead of leaving them to find
-        // the Stock tab and reselect it themselves.
-        setStockProductId(String(saved.id));
-        setStockQuantity("1");
-        setStockType("purchase");
-        setStockUnitPrice(String(saved.buy_price));
-        setStockRemarks("");
-        setStockDate(new Date().toISOString().slice(0, 10));
-        setStockFormOpen(true);
-        handleTabChange("store-stock");
-      }
-    } catch (err) {
-      toast.error(extractApiErrorMessage(err, "Could not save this product."));
-    } finally {
-      setSavingProduct(false);
-    }
-  };
-
-  const removeProduct = async (id: number) => {
-    if (!token || !myStore) return;
-    setDeletingProductId(id);
-    try {
-      await deleteStoreProduct(token, myStore.id, id);
-      setStoreProducts((list) => list.filter((p) => p.id !== id));
-      toast.success("Product removed");
-    } catch (err) {
-      toast.error(extractApiErrorMessage(err, "Could not remove that product."));
-    } finally {
-      setDeletingProductId(null);
-      setConfirmDeleteProductId(null);
-    }
-  };
-
-  const refreshStoreStocks = async () => {
-    if (!token || !myStore) return;
-    setStoreStocksLoading(true);
-    const { stocks } = await fetchStoreStocks(token, myStore.id);
-    setStoreStocks(stocks);
-    setStoreStocksLoading(false);
-  };
-
-  const openStockForm = () => {
-    setStockProductId(storeProducts[0] ? String(storeProducts[0].id) : "");
-    setStockQuantity("1");
-    setStockType("purchase");
-    setStockUnitPrice("");
-    setStockRemarks("");
-    setStockDate(new Date().toISOString().slice(0, 10));
-    setStockFormOpen(true);
-  };
-
-  const saveStockTransaction = async () => {
-    if (!token || !myStore) return;
-    if (!stockProductId) {
-      toast.error("Select a product first.");
-      return;
-    }
-    const quantity = Number(stockQuantity);
-    if (!quantity || quantity < 1) {
-      toast.error("Quantity must be at least 1.");
-      return;
-    }
-    if (!stockUnitPrice.trim()) {
-      toast.error("Enter the unit price.");
-      return;
-    }
-    setSavingStock(true);
-    try {
-      const created = await createStoreStock(token, myStore.id, {
-        store_product_id: Number(stockProductId),
-        quantity,
-        transaction_type: stockType,
-        unit_price: Number(stockUnitPrice),
-        remarks: stockRemarks.trim() || undefined,
-        transaction_date: new Date(stockDate).toISOString(),
-      });
-      setStoreStocks((list) => [created, ...list]);
-      toast.success("Stock transaction logged");
-      setStockFormOpen(false);
-      refreshStoreProducts(); // current_stock lives on the product record
-    } catch (err) {
-      toast.error(extractApiErrorMessage(err, "Could not log this stock transaction."));
-    } finally {
-      setSavingStock(false);
-    }
-  };
-
-  // --- POS: a cart against the store's own active products. No
-  // Order/Invoice API exists yet, so "completing a sale" records each cart
-  // line as its own `sale` stock transaction rather than one grouped
-  // receipt — see completeSale below for how a partial failure is handled.
-
-  const addToCart = (product: StoreProductRecord) => {
-    setPosCart((cart) => {
-      const existing = cart.find((c) => c.productId === product.id);
-      if (existing) {
-        return cart.map((c) => (c.productId === product.id ? { ...c, qty: c.qty + 1 } : c));
-      }
-      return [
-        ...cart,
-        { productId: product.id, name: product.medicine_name ?? "Medicine", price: product.sale_price, qty: 1 },
-      ];
-    });
-  };
-
-  const updateCartQty = (productId: number, qty: number) => {
-    setPosCart((cart) => {
-      if (qty <= 0) return cart.filter((c) => c.productId !== productId);
-      return cart.map((c) => (c.productId === productId ? { ...c, qty } : c));
-    });
-  };
-
-  const removeFromCart = (productId: number) => {
-    setPosCart((cart) => cart.filter((c) => c.productId !== productId));
-  };
-
-  const posTotal = posCart.reduce((sum, item) => sum + item.price * item.qty, 0);
-
-  const completeSale = async () => {
-    if (!token || !myStore || posCart.length === 0) return;
-    setPosSubmitting(true);
-    try {
-      const order = await createOrder(token, myStore.id, {
-        items: posCart.map((c) => ({ store_product_id: c.productId, quantity: c.qty })),
-        customer_id: posCustomer?.id,
-        payment_method: posPaymentMethod || undefined,
-        discount: posDiscount.trim() ? Number(posDiscount) : undefined,
-        delivery_fee: posDeliveryFee.trim() ? Number(posDeliveryFee) : undefined,
-        notes: posNotes.trim() || undefined,
-      });
-      setLastOrder(order);
-      setLastOrderCustomer(posCustomer);
-      setPosCart([]);
-      setPosDiscount("");
-      setPosDeliveryFee("");
-      setPosNotes("");
-      clearPosCustomer();
-      toast.success(`Order ${order.order_number} completed`);
-    } catch (err) {
-      toast.error(extractApiErrorMessage(err, "Could not complete this sale."));
-    } finally {
-      setPosSubmitting(false);
-      refreshStoreProducts();
-      refreshStoreOrders();
-    }
-  };
-
-  const searchPosCustomer = async () => {
-    if (!token) return;
-    const phone = posCustomerPhone.trim();
-    if (!phone) return;
-    setPosCustomerLoading(true);
-    setPosCustomerNotFound(false);
-    const found = await findCustomerByPhone(token, phone);
-    if (found) {
-      setPosCustomer(found);
-    } else {
-      setPosCustomerNotFound(true);
-    }
-    setPosCustomerLoading(false);
-  };
-
-  const createPosCustomer = async () => {
-    if (!token) return;
-    const phone = posCustomerPhone.trim();
-    if (!phone || !posNewCustomerName.trim()) {
-      toast.error("Enter the customer's name.");
-      return;
-    }
-    setPosCustomerCreating(true);
-    try {
-      const created = await createCustomerByPhone(token, phone, { name: posNewCustomerName.trim() });
-      setPosCustomer(created);
-      setPosCustomerNotFound(false);
-    } catch (err) {
-      toast.error(extractApiErrorMessage(err, "Could not add this customer."));
-    } finally {
-      setPosCustomerCreating(false);
-    }
-  };
-
-  const clearPosCustomer = () => {
-    setPosCustomer(null);
-    setPosCustomerPhone("");
-    setPosCustomerNotFound(false);
-    setPosNewCustomerName("");
-  };
-
-  const refreshStoreOrders = async () => {
-    if (!token || !myStore) return;
-    setStoreOrdersLoading(true);
-    const { orders, failed } = await fetchOrders(token, myStore.id);
-    setStoreOrders(orders);
-    setStoreOrdersFailed(failed);
-    setStoreOrdersLoading(false);
-  };
-
-  const changeOrderStatus = async (order: OrderRecord, status: OrderStatus) => {
-    if (!token || !myStore) return;
-    setUpdatingOrderStatus(true);
-    try {
-      const updated = await updateOrderStatus(token, myStore.id, order.id, status);
-      setStoreOrders((list) => list.map((o) => (o.id === updated.id ? updated : o)));
-      setOrderDetailsView((current) => (current?.id === updated.id ? updated : current));
-      toast.success("Order status updated");
-    } catch (err) {
-      toast.error(extractApiErrorMessage(err, "Could not update this order's status."));
-    } finally {
-      setUpdatingOrderStatus(false);
-    }
-  };
-
-  const printOrderFromHistory = (order: OrderRecord, mode: "80mm" | "a4") => {
-    setLastOrder(order);
-    // The order API only returns a bare customer_id here, no nested
-    // name/address — that snapshot only exists for a sale just completed
-    // live in POS, not one reopened from history, so clear any stale one.
-    setLastOrderCustomer(null);
-    setPrintInvoiceMode(mode);
-    setOrderDetailsView(null);
   };
 
   // The just-created prescription has no directly-attached patient name —
@@ -2704,8 +2182,8 @@ function DashboardPageInner() {
       <SiteHeader />
       <main className="flex-1">
         {/* Role-colored user summary banner — always visible */}
-        <section className={cn("px-4 py-4 text-foreground sm:px-6 lg:px-8", getRoleBannerClass(roles))}>
-          <div className="mx-auto max-w-7xl">
+        <section className={cn("py-4 text-foreground", getRoleBannerClass(roles))}>
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-center gap-4">
                 <UserAvatar
@@ -2981,8 +2459,8 @@ function DashboardPageInner() {
         </section>
 
         {/* Compact quick-links row */}
-        <section className="border-b border-border/60 bg-secondary/30 px-4 py-3 sm:px-6 lg:px-8">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-3">
+        <section className="border-b border-border/60 bg-secondary/30 py-3">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-3 px-4 sm:px-6 lg:px-8">
             {!isDoctor && (
               <Link href="/dashboard/become-a-doctor" className={buttonVariants({ variant: "outline", size: "sm" })}>
                 <Stethoscope />
@@ -3010,14 +2488,10 @@ function DashboardPageInner() {
               </button>
             )}
             {!hasStore && (
-              <button
-                type="button"
-                onClick={() => handleTabChange("store")}
-                className={buttonVariants({ variant: "outline", size: "sm" })}
-              >
+              <Link href="/dashboard/store/shop" className={buttonVariants({ variant: "outline", size: "sm" })}>
                 <Store />
                 Register a Store
-              </button>
+              </Link>
             )}
           </div>
         </section>
@@ -3643,11 +3117,13 @@ function DashboardPageInner() {
                             Share a problem, a solution, or a health tip with the community.
                           </p>
                         </div>
-                        {!newPostOpen && (
+                        {!newPostOpen ? (
                           <Button size="sm" onClick={openNewPost}>
                             <Plus />
                             New Post
                           </Button>
+                        ) : (
+                          <BackToList onClick={() => setNewPostOpen(false)} />
                         )}
                       </div>
 
@@ -4086,11 +3562,13 @@ function DashboardPageInner() {
                             Register and manage the ambulance vehicles you own — add as many as you like.
                           </p>
                         </div>
-                        {ambulanceFormOpen === null && (
+                        {ambulanceFormOpen === null ? (
                           <Button size="sm" onClick={openNewAmbulanceForm}>
                             <Plus />
                             Add Ambulance
                           </Button>
+                        ) : (
+                          <BackToList onClick={() => setAmbulanceFormOpen(null)} />
                         )}
                       </div>
 
@@ -4299,1067 +3777,6 @@ function DashboardPageInner() {
                           </div>
                         </div>
                       )}
-                    </Card>
-                  </motion.div>
-                )}
-
-                {(activeTab === "store" || activeTab === "store-products" || activeTab === "store-stock") &&
-                  isPatient && (
-                  <motion.div
-                    key="store"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="space-y-4"
-                  >
-                    {activeTab === "store" && (
-                    <Card className="border-border/60 p-6">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <h3 className="flex items-center gap-2 font-semibold text-foreground">
-                            <Store className="size-4 text-primary" />
-                            {myStore ? myStore.store_name : "My Store"}
-                          </h3>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {myStore
-                              ? "Your registered medical store."
-                              : "Register a store to start adding medicines and tracking stock."}
-                          </p>
-                        </div>
-                        {myStore && !storeFormOpen && (
-                          <Button size="sm" variant="outline" onClick={openEditStoreForm}>
-                            <Pencil />
-                            Edit
-                          </Button>
-                        )}
-                      </div>
-
-                      {myStoreLoading ? (
-                        <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
-                      ) : !myStore && !storeFormOpen ? (
-                        <div className="mt-5 flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 p-8 text-center">
-                          <Store className="size-8 text-muted-foreground" />
-                          <p className="text-sm text-muted-foreground">You haven&apos;t registered a store yet.</p>
-                          <Button size="sm" onClick={openCreateStoreForm}>
-                            <Plus />
-                            Register a Store
-                          </Button>
-                        </div>
-                      ) : storeFormOpen ? (
-                        <div className="mt-5 space-y-3 rounded-xl border border-dashed border-border/60 p-4">
-                          <div className="space-y-1.5">
-                            <Label htmlFor="storeName">Store Name</Label>
-                            <Input id="storeName" value={storeName} onChange={(e) => setStoreName(e.target.value)} />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label htmlFor="storeAddress">Address</Label>
-                            <Input
-                              id="storeAddress"
-                              value={storeAddress}
-                              onChange={(e) => setStoreAddress(e.target.value)}
-                            />
-                          </div>
-                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <div className="space-y-1.5">
-                              <Label htmlFor="storeLicense">Trade License Number</Label>
-                              <Input
-                                id="storeLicense"
-                                value={storeLicense}
-                                onChange={(e) => setStoreLicense(e.target.value)}
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label htmlFor="storePhone">Phone</Label>
-                              <Input id="storePhone" value={storePhone} onChange={(e) => setStorePhone(e.target.value)} />
-                            </div>
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label htmlFor="storeEmail">Email</Label>
-                            <Input
-                              id="storeEmail"
-                              type="email"
-                              value={storeEmail}
-                              onChange={(e) => setStoreEmail(e.target.value)}
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label htmlFor="storeDescription">Description</Label>
-                            <Textarea
-                              id="storeDescription"
-                              rows={2}
-                              value={storeDescription}
-                              onChange={(e) => setStoreDescription(e.target.value)}
-                            />
-                          </div>
-                          <div className="flex flex-wrap justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => setStoreFormOpen(false)}>
-                              Cancel
-                            </Button>
-                            <Button size="sm" onClick={saveStore} disabled={savingStore}>
-                              {savingStore ? "Saving..." : myStore ? "Save Changes" : "Register Store"}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        myStore && (
-                          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <div>
-                              <p className="text-xs text-muted-foreground">Address</p>
-                              <p className="text-sm text-foreground">{myStore.store_address}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground">Trade License</p>
-                              <p className="text-sm text-foreground">{myStore.trade_license_no}</p>
-                            </div>
-                            {myStore.phone && (
-                              <div>
-                                <p className="text-xs text-muted-foreground">Phone</p>
-                                <p className="text-sm text-foreground">{myStore.phone}</p>
-                              </div>
-                            )}
-                            {myStore.email && (
-                              <div>
-                                <p className="text-xs text-muted-foreground">Email</p>
-                                <p className="text-sm text-foreground">{myStore.email}</p>
-                              </div>
-                            )}
-                            {myStore.description && (
-                              <div className="sm:col-span-2">
-                                <p className="text-xs text-muted-foreground">Description</p>
-                                <p className="text-sm text-foreground">{myStore.description}</p>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      )}
-                    </Card>
-                    )}
-
-                    {activeTab === "store-products" && !myStore && (
-                      <Card className="flex flex-col items-center gap-3 border-dashed border-border/60 p-10 text-center">
-                        <Store className="size-8 text-muted-foreground" />
-                        <p className="font-semibold text-foreground">No store yet</p>
-                        <p className="max-w-sm text-sm text-muted-foreground">
-                          Register a store from the Shop tab before adding products.
-                        </p>
-                        <Button size="sm" onClick={() => handleTabChange("store")}>
-                          Go to Shop
-                        </Button>
-                      </Card>
-                    )}
-
-                    {activeTab === "store-products" && myStore && (
-                      <Card className="border-border/60 p-6">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <h3 className="flex items-center gap-2 font-semibold text-foreground">
-                              <Pill className="size-4 text-primary" />
-                              Products
-                            </h3>
-                            <p className="mt-1 text-sm text-muted-foreground">Medicines you sell at this store.</p>
-                          </div>
-                          {productFormOpen === null && (
-                            <Button size="sm" onClick={openNewProductForm}>
-                              <Plus />
-                              Add Product
-                            </Button>
-                          )}
-                        </div>
-
-                        {productFormOpen === null ? (
-                          <div className="mt-5 space-y-3">
-                            {storeProductsLoading ? (
-                              <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
-                            ) : storeProducts.length === 0 ? (
-                              <p className="rounded-xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">
-                                No products yet. Add your first medicine to start tracking stock.
-                              </p>
-                            ) : (
-                              storeProducts.map((p) => (
-                                <div key={p.id} className="rounded-xl border border-border/60 p-4">
-                                  <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div>
-                                      <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
-                                        {p.medicine_name ?? `Medicine #${p.medicine_id}`}
-                                        <span
-                                          className={cn(
-                                            "rounded-full px-2 py-0.5 text-[10px] font-medium",
-                                            p.is_active
-                                              ? "bg-primary/10 text-primary"
-                                              : "bg-muted text-muted-foreground"
-                                          )}
-                                        >
-                                          {p.is_active ? "Active" : "Inactive"}
-                                        </span>
-                                        {p.minimum_stock != null && (p.current_stock ?? 0) <= p.minimum_stock && (
-                                          <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
-                                            Low stock
-                                          </span>
-                                        )}
-                                      </p>
-                                      {p.medicine_generic_name && (
-                                        <p className="mt-0.5 text-xs text-muted-foreground">
-                                          {p.medicine_generic_name}
-                                        </p>
-                                      )}
-                                      <p className="mt-1 text-sm text-muted-foreground">
-                                        Buy ৳{p.buy_price} · Sale ৳{p.sale_price} · Wholesale ৳{p.wholesale_price}
-                                      </p>
-                                      <p className="mt-0.5 text-xs text-muted-foreground">
-                                        In stock: {p.current_stock ?? 0}
-                                        {p.minimum_stock != null && ` · Min ${p.minimum_stock}`}
-                                      </p>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                      {confirmDeleteProductId === p.id ? (
-                                        <>
-                                          <Button
-                                            variant="destructive"
-                                            size="sm"
-                                            onClick={() => removeProduct(p.id)}
-                                            disabled={deletingProductId === p.id}
-                                          >
-                                            {deletingProductId === p.id ? "Removing..." : "Confirm Remove"}
-                                          </Button>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setConfirmDeleteProductId(null)}
-                                          >
-                                            Cancel
-                                          </Button>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Button
-                                            variant="outline"
-                                            size="icon-sm"
-                                            onClick={() => openEditProductForm(p)}
-                                            aria-label="Edit product"
-                                          >
-                                            <Pencil />
-                                          </Button>
-                                          <Button
-                                            variant="ghost"
-                                            size="icon-sm"
-                                            className="text-muted-foreground hover:text-destructive"
-                                            onClick={() => setConfirmDeleteProductId(p.id)}
-                                            aria-label="Remove product"
-                                          >
-                                            <Trash2 />
-                                          </Button>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        ) : (
-                          <div className="mt-5 space-y-3 rounded-xl border border-dashed border-border/60 p-4">
-                            <div className="space-y-1.5">
-                              <Label>Medicine</Label>
-                              <MedicineSearchInput
-                                value={productMedicineQuery}
-                                onValueChange={setProductMedicineQuery}
-                                onSelectMedicine={(m) => {
-                                  setProductMedicineId(m.id);
-                                  setProductMedicineQuery(m.weight ? `${m.name} ${m.weight}` : m.name);
-                                  // Convenience default, not a source of truth — only fills an
-                                  // empty field so it never clobbers a price already typed in
-                                  // (e.g. while editing an existing product).
-                                  if (!productBuyPrice && m.suggestion_price != null) {
-                                    setProductBuyPrice(String(m.suggestion_price));
-                                  }
-                                }}
-                                placeholder="Search medicine by name…"
-                              />
-                            </div>
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                              <div className="space-y-1.5">
-                                <Label htmlFor="productBuyPrice">Buy Price (৳)</Label>
-                                <Input
-                                  id="productBuyPrice"
-                                  type="number"
-                                  min={0}
-                                  step="0.01"
-                                  value={productBuyPrice}
-                                  onChange={(e) => setProductBuyPrice(e.target.value)}
-                                />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label htmlFor="productSalePrice">Sale Price (৳)</Label>
-                                <Input
-                                  id="productSalePrice"
-                                  type="number"
-                                  min={0}
-                                  step="0.01"
-                                  value={productSalePrice}
-                                  onChange={(e) => setProductSalePrice(e.target.value)}
-                                />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label htmlFor="productWholesalePrice">Wholesale Price (৳)</Label>
-                                <Input
-                                  id="productWholesalePrice"
-                                  type="number"
-                                  min={0}
-                                  step="0.01"
-                                  value={productWholesalePrice}
-                                  onChange={(e) => setProductWholesalePrice(e.target.value)}
-                                />
-                              </div>
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label htmlFor="productMinStock">Minimum Stock (optional)</Label>
-                              <Input
-                                id="productMinStock"
-                                type="number"
-                                min={0}
-                                value={productMinStock}
-                                onChange={(e) => setProductMinStock(e.target.value)}
-                              />
-                            </div>
-                            <div className="flex items-center justify-between rounded-xl bg-secondary/60 p-4">
-                              <Label htmlFor="productIsActive" className="cursor-pointer">
-                                Available for sale
-                              </Label>
-                              <Switch
-                                id="productIsActive"
-                                checked={productIsActive}
-                                onCheckedChange={setProductIsActive}
-                              />
-                            </div>
-                            <div className="flex flex-wrap justify-end gap-2">
-                              <Button variant="outline" size="sm" onClick={() => setProductFormOpen(null)}>
-                                Cancel
-                              </Button>
-                              <Button size="sm" onClick={saveProduct} disabled={savingProduct}>
-                                {savingProduct
-                                  ? "Saving..."
-                                  : typeof productFormOpen === "number"
-                                    ? "Update Product"
-                                    : "Add Product"}
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </Card>
-                    )}
-
-                    {activeTab === "store-stock" && !myStore && (
-                      <Card className="flex flex-col items-center gap-3 border-dashed border-border/60 p-10 text-center">
-                        <Store className="size-8 text-muted-foreground" />
-                        <p className="font-semibold text-foreground">No store yet</p>
-                        <p className="max-w-sm text-sm text-muted-foreground">
-                          Register a store from the Shop tab before logging stock.
-                        </p>
-                        <Button size="sm" onClick={() => handleTabChange("store")}>
-                          Go to Shop
-                        </Button>
-                      </Card>
-                    )}
-
-                    {activeTab === "store-stock" && myStore && storeProducts.length === 0 && (
-                      <Card className="flex flex-col items-center gap-3 border-dashed border-border/60 p-10 text-center">
-                        <Pill className="size-8 text-muted-foreground" />
-                        <p className="font-semibold text-foreground">No products yet</p>
-                        <p className="max-w-sm text-sm text-muted-foreground">
-                          Add a product from the Products tab before logging stock.
-                        </p>
-                        <Button size="sm" onClick={() => handleTabChange("store-products")}>
-                          Go to Products
-                        </Button>
-                      </Card>
-                    )}
-
-                    {activeTab === "store-stock" && myStore && storeProducts.length > 0 && (
-                      <Card className="border-border/60 p-6">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <h3 className="flex items-center gap-2 font-semibold text-foreground">
-                              <Receipt className="size-4 text-primary" />
-                              Stock Ledger
-                            </h3>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              Log purchases, sales, returns, and adjustments.
-                            </p>
-                          </div>
-                          {!stockFormOpen && (
-                            <Button size="sm" onClick={openStockForm}>
-                              <Plus />
-                              Log Stock
-                            </Button>
-                          )}
-                        </div>
-
-                        {stockFormOpen && (
-                          <div className="mt-5 space-y-3 rounded-xl border border-dashed border-border/60 p-4">
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <div className="space-y-1.5">
-                                <Label>Product</Label>
-                                <Select value={stockProductId} onValueChange={(v) => setStockProductId(v ?? "")}>
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select">
-                                      {(value: string) =>
-                                        storeProducts.find((p) => String(p.id) === value)?.medicine_name ??
-                                        "Select"
-                                      }
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {storeProducts.map((p) => (
-                                      <SelectItem key={p.id} value={String(p.id)}>
-                                        {p.medicine_name ?? `Medicine #${p.medicine_id}`}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label>Transaction Type</Label>
-                                <Select
-                                  value={stockType}
-                                  onValueChange={(v) => setStockType((v as StockTransactionType) ?? "purchase")}
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue>
-                                      {(value: StockTransactionType) =>
-                                        STOCK_TRANSACTION_TYPES.find((t) => t.value === value)?.label ?? value
-                                      }
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {STOCK_TRANSACTION_TYPES.map((t) => (
-                                      <SelectItem key={t.value} value={t.value}>
-                                        {t.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                              <div className="space-y-1.5">
-                                <Label htmlFor="stockQuantity">Quantity</Label>
-                                <Input
-                                  id="stockQuantity"
-                                  type="number"
-                                  min={1}
-                                  value={stockQuantity}
-                                  onChange={(e) => setStockQuantity(e.target.value)}
-                                />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label htmlFor="stockUnitPrice">Unit Price (৳)</Label>
-                                <Input
-                                  id="stockUnitPrice"
-                                  type="number"
-                                  min={0}
-                                  step="0.01"
-                                  value={stockUnitPrice}
-                                  onChange={(e) => setStockUnitPrice(e.target.value)}
-                                />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label htmlFor="stockDate">Date</Label>
-                                <Input
-                                  id="stockDate"
-                                  type="date"
-                                  value={stockDate}
-                                  onChange={(e) => setStockDate(e.target.value)}
-                                />
-                              </div>
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label htmlFor="stockRemarks">Remarks (optional)</Label>
-                              <Textarea
-                                id="stockRemarks"
-                                rows={2}
-                                value={stockRemarks}
-                                onChange={(e) => setStockRemarks(e.target.value)}
-                              />
-                            </div>
-                            <div className="flex flex-wrap justify-end gap-2">
-                              <Button variant="outline" size="sm" onClick={() => setStockFormOpen(false)}>
-                                Cancel
-                              </Button>
-                              <Button size="sm" onClick={saveStockTransaction} disabled={savingStock}>
-                                {savingStock ? "Saving..." : "Log Transaction"}
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="mt-5 space-y-2">
-                          {storeStocksLoading ? (
-                            <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
-                          ) : storeStocks.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No stock transactions logged yet.</p>
-                          ) : (
-                            storeStocks.slice(0, 20).map((s) => {
-                              const product = storeProducts.find((p) => p.id === s.store_product_id);
-                              return (
-                                <div
-                                  key={s.id}
-                                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 p-3"
-                                >
-                                  <div>
-                                    <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                                      {product?.medicine_name ?? `Product #${s.store_product_id}`}
-                                      <span
-                                        className={cn(
-                                          "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                                          s.transaction_type === "purchase" && "bg-primary/10 text-primary",
-                                          s.transaction_type === "sale" &&
-                                            "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-                                          s.transaction_type === "return" &&
-                                            "bg-amber-500/10 text-amber-700 dark:text-amber-400",
-                                          s.transaction_type === "adjustment" &&
-                                            "bg-secondary text-secondary-foreground"
-                                        )}
-                                      >
-                                        {s.transaction_type}
-                                      </span>
-                                    </p>
-                                    <p className="mt-0.5 text-xs text-muted-foreground">
-                                      {formatDateForDisplay(s.transaction_date.slice(0, 10))} · {s.quantity} units ×
-                                      ৳{s.unit_price} = ৳{s.total_price}
-                                    </p>
-                                    {s.remarks && (
-                                      <p className="mt-1 text-xs text-muted-foreground italic">
-                                        &ldquo;{s.remarks}&rdquo;
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                      </Card>
-                    )}
-                  </motion.div>
-                )}
-
-                {activeTab === "pos" && isPatient && myStore && (
-                  <motion.div
-                    key="pos"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                      <div className="lg:col-span-2">
-                        <Card className="border-border/60 p-6">
-                          <h3 className="flex items-center gap-2 font-semibold text-foreground">
-                            <ShoppingCart className="size-4 text-primary" />
-                            Point of Sale
-                          </h3>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            Search a product and add it to the cart.
-                          </p>
-
-                          <div className="relative mt-4">
-                            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                              value={posQuery}
-                              onChange={(e) => setPosQuery(e.target.value)}
-                              placeholder="Search products…"
-                              className="pl-8"
-                            />
-                          </div>
-
-                          <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
-                            {storeProducts
-                              .filter((p) => p.is_active)
-                              .filter(
-                                (p) =>
-                                  !posQuery.trim() ||
-                                  (p.medicine_name ?? "").toLowerCase().includes(posQuery.trim().toLowerCase())
-                              )
-                              .map((p) => {
-                                const outOfStock = (p.current_stock ?? 0) <= 0;
-                                return (
-                                  <button
-                                    key={p.id}
-                                    type="button"
-                                    onClick={() => addToCart(p)}
-                                    disabled={outOfStock}
-                                    className="group relative flex flex-col items-start gap-1 rounded-xl border border-border/60 bg-background p-3.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md disabled:pointer-events-none disabled:opacity-40"
-                                  >
-                                    <span className="line-clamp-2 text-sm font-semibold text-foreground">
-                                      {p.medicine_name ?? `Medicine #${p.medicine_id}`}
-                                    </span>
-                                    <span className="text-base font-bold text-primary">৳{p.sale_price}</span>
-                                    <span className="text-[11px] text-muted-foreground">
-                                      {outOfStock ? "Out of stock" : `${p.current_stock} in stock`}
-                                    </span>
-                                    {!outOfStock && (
-                                      <span className="absolute top-2 right-2 flex size-5 items-center justify-center rounded-full bg-primary/10 text-primary opacity-0 transition-opacity group-hover:opacity-100">
-                                        <Plus className="size-3" />
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            {storeProducts.filter((p) => p.is_active).length === 0 && (
-                              <p className="col-span-full py-6 text-center text-sm text-muted-foreground">
-                                No active products yet — add some from the My Store tab.
-                              </p>
-                            )}
-                          </div>
-                        </Card>
-                      </div>
-
-                      <div className="lg:col-span-1">
-                        <Card className="overflow-hidden border-border/60 p-0 lg:sticky lg:top-24">
-                          <div className="flex items-center gap-2 border-b border-border/60 px-5 py-4">
-                            <Receipt className="size-4 text-primary" />
-                            <h3 className="font-semibold text-foreground">Current Sale</h3>
-                            {posCart.length > 0 && (
-                              <span className="ml-auto rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                                {posCart.reduce((n, c) => n + c.qty, 0)} item
-                                {posCart.reduce((n, c) => n + c.qty, 0) === 1 ? "" : "s"}
-                              </span>
-                            )}
-                          </div>
-
-                          {posCart.length === 0 ? (
-                            <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
-                              <ShoppingCart className="size-7 text-muted-foreground" />
-                              <p className="text-sm text-muted-foreground">
-                                Tap a product on the left to add it here.
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="px-5 py-4">
-                              <div className="max-h-64 space-y-3 overflow-y-auto">
-                                {posCart.map((item) => (
-                                  <div key={item.productId} className="flex items-center justify-between gap-2">
-                                    <div className="min-w-0">
-                                      <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
-                                      <p className="text-xs text-muted-foreground">
-                                        ৳{item.price} × {item.qty} = ৳{(item.price * item.qty).toFixed(2)}
-                                      </p>
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-1">
-                                      <Button
-                                        variant="outline"
-                                        size="icon-xs"
-                                        onClick={() => updateCartQty(item.productId, item.qty - 1)}
-                                        aria-label="Decrease"
-                                      >
-                                        <Minus />
-                                      </Button>
-                                      <Input
-                                        type="number"
-                                        min={1}
-                                        value={item.qty}
-                                        onChange={(e) => updateCartQty(item.productId, Number(e.target.value) || 1)}
-                                        className="h-7 w-14 px-1 text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                      />
-                                      <Button
-                                        variant="outline"
-                                        size="icon-xs"
-                                        onClick={() => updateCartQty(item.productId, item.qty + 1)}
-                                        aria-label="Increase"
-                                      >
-                                        <Plus />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon-xs"
-                                        className="text-muted-foreground hover:text-destructive"
-                                        onClick={() => removeFromCart(item.productId)}
-                                        aria-label="Remove"
-                                      >
-                                        <X />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-
-                              <Separator className="my-4" />
-
-                              <div className="space-y-1">
-                                <Label className="text-xs">Customer (optional)</Label>
-                                {posCustomer ? (
-                                  <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-                                    <div className="min-w-0">
-                                      <p className="truncate text-sm font-medium text-foreground">
-                                        {posCustomer.name}
-                                      </p>
-                                      <p className="truncate text-xs text-muted-foreground">
-                                        {posCustomer.phone}
-                                        {posCustomer.address ? ` · ${posCustomer.address}` : ""}
-                                      </p>
-                                    </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon-xs"
-                                      onClick={clearPosCustomer}
-                                      aria-label="Change customer"
-                                    >
-                                      <X />
-                                    </Button>
-                                  </div>
-                                ) : (
-                                  <div className="flex gap-1.5">
-                                    <div className="relative flex-1">
-                                      <Phone className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                                      <Input
-                                        value={posCustomerPhone}
-                                        onChange={(e) => {
-                                          setPosCustomerPhone(e.target.value);
-                                          setPosCustomerNotFound(false);
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") {
-                                            e.preventDefault();
-                                            searchPosCustomer();
-                                          }
-                                        }}
-                                        placeholder="Phone number"
-                                        className="h-8 pl-8"
-                                      />
-                                    </div>
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      className="h-8 w-8 shrink-0"
-                                      onClick={searchPosCustomer}
-                                      disabled={posCustomerLoading || !posCustomerPhone.trim()}
-                                      aria-label="Search customer"
-                                    >
-                                      <Search />
-                                    </Button>
-                                  </div>
-                                )}
-                                {posCustomerLoading && (
-                                  <p className="text-xs text-muted-foreground">Searching…</p>
-                                )}
-                                {posCustomerNotFound && !posCustomerLoading && (
-                                  <div className="space-y-2 rounded-lg border border-dashed border-border/60 p-2.5">
-                                    <p className="text-xs text-muted-foreground">
-                                      No account for {posCustomerPhone} — add as a new customer?
-                                    </p>
-                                    <Input
-                                      value={posNewCustomerName}
-                                      onChange={(e) => setPosNewCustomerName(e.target.value)}
-                                      placeholder="Customer name"
-                                      className="h-8"
-                                    />
-                                    <Button
-                                      size="sm"
-                                      className="w-full"
-                                      onClick={createPosCustomer}
-                                      disabled={posCustomerCreating}
-                                    >
-                                      {posCustomerCreating ? "Adding..." : "Add Customer"}
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="mt-3 grid grid-cols-2 gap-2.5">
-                                <div className="space-y-1">
-                                  <Label htmlFor="posDiscount" className="text-xs whitespace-nowrap">
-                                    Discount
-                                  </Label>
-                                  <div className="relative">
-                                    <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-xs text-muted-foreground">
-                                      ৳
-                                    </span>
-                                    <Input
-                                      id="posDiscount"
-                                      type="number"
-                                      min={0}
-                                      step="0.01"
-                                      className="h-8 pl-6"
-                                      value={posDiscount}
-                                      onChange={(e) => setPosDiscount(e.target.value)}
-                                    />
-                                  </div>
-                                </div>
-                                <div className="space-y-1">
-                                  <Label htmlFor="posDeliveryFee" className="text-xs whitespace-nowrap">
-                                    Delivery
-                                  </Label>
-                                  <div className="relative">
-                                    <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-xs text-muted-foreground">
-                                      ৳
-                                    </span>
-                                    <Input
-                                      id="posDeliveryFee"
-                                      type="number"
-                                      min={0}
-                                      step="0.01"
-                                      className="h-8 pl-6"
-                                      value={posDeliveryFee}
-                                      onChange={(e) => setPosDeliveryFee(e.target.value)}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="mt-2.5 space-y-1">
-                                <Label htmlFor="posPaymentMethod" className="text-xs">
-                                  Payment Method
-                                </Label>
-                                <Select value={posPaymentMethod} onValueChange={(v) => setPosPaymentMethod(v ?? "Cash")}>
-                                  <SelectTrigger className="h-8 w-full">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="Cash">Cash</SelectItem>
-                                    <SelectItem value="Card">Card</SelectItem>
-                                    <SelectItem value="Mobile Banking">Mobile Banking</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="mt-2.5 space-y-1">
-                                <Label htmlFor="posNotes" className="text-xs">
-                                  Notes (optional)
-                                </Label>
-                                <Input
-                                  id="posNotes"
-                                  className="h-8"
-                                  value={posNotes}
-                                  onChange={(e) => setPosNotes(e.target.value)}
-                                />
-                              </div>
-
-                              <div className="mt-4 space-y-1 text-sm">
-                                <div className="flex items-center justify-between text-muted-foreground">
-                                  <span>Subtotal</span>
-                                  <span>৳{posTotal.toFixed(2)}</span>
-                                </div>
-                                {Number(posDiscount) > 0 && (
-                                  <div className="flex items-center justify-between text-muted-foreground">
-                                    <span>Discount</span>
-                                    <span>−৳{Number(posDiscount).toFixed(2)}</span>
-                                  </div>
-                                )}
-                                {Number(posDeliveryFee) > 0 && (
-                                  <div className="flex items-center justify-between text-muted-foreground">
-                                    <span>Delivery Fee</span>
-                                    <span>৳{Number(posDeliveryFee).toFixed(2)}</span>
-                                  </div>
-                                )}
-                              </div>
-
-                              {(() => {
-                                const grandTotal = Math.max(
-                                  0,
-                                  posTotal - Number(posDiscount || 0) + Number(posDeliveryFee || 0)
-                                );
-                                return (
-                                  <>
-                                    <div className="mt-3 flex items-center justify-between rounded-xl bg-primary/10 px-4 py-3">
-                                      <span className="font-semibold text-foreground">Total</span>
-                                      <span className="text-xl font-bold text-primary">
-                                        ৳{grandTotal.toFixed(2)}
-                                      </span>
-                                    </div>
-
-                                    <Button
-                                      className="mt-3 w-full"
-                                      size="lg"
-                                      onClick={completeSale}
-                                      disabled={posSubmitting}
-                                    >
-                                      {posSubmitting ? "Processing..." : `Complete Sale · ৳${grandTotal.toFixed(2)}`}
-                                    </Button>
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          )}
-
-                          {lastOrder && (
-                            <div className="mx-5 mb-5 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4">
-                              <p className="text-sm font-semibold text-foreground">
-                                Order {lastOrder.order_number} completed
-                              </p>
-                              <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                                {lastOrder.items.map((item, i) => (
-                                  <div key={item.id ?? i} className="flex justify-between">
-                                    <span>
-                                      {item.medicine_name ?? `Item #${item.store_product_id}`} × {item.quantity}
-                                    </span>
-                                    <span>৳{Number(item.total_price).toFixed(2)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="mt-2 flex justify-between border-t border-border/60 pt-2 text-sm font-semibold text-foreground">
-                                <span>Total</span>
-                                <span>৳{Number(lastOrder.total).toFixed(2)}</span>
-                              </div>
-                              <div className="mt-3 flex flex-col gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="w-full"
-                                  onClick={() => setPrintInvoiceMode("80mm")}
-                                >
-                                  <Printer />
-                                  Print 80mm Receipt
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="w-full"
-                                  onClick={() => setPrintInvoiceMode("a4")}
-                                >
-                                  <Printer />
-                                  Print A4 Invoice
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-                        </Card>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {activeTab === "pos" && isPatient && !myStore && !myStoreLoading && (
-                  <motion.div
-                    key="pos-empty"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <Card className="flex flex-col items-center gap-3 border-dashed border-border/60 p-10 text-center">
-                      <Store className="size-8 text-muted-foreground" />
-                      <p className="font-semibold text-foreground">No store yet</p>
-                      <p className="max-w-sm text-sm text-muted-foreground">
-                        Register a store and add products before you can use the POS.
-                      </p>
-                      <Button size="sm" onClick={() => handleTabChange("store")}>
-                        Go to My Store
-                      </Button>
-                    </Card>
-                  </motion.div>
-                )}
-
-                {activeTab === "store-orders" && isPatient && myStore && (
-                  <motion.div
-                    key="store-orders"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <Card className="border-border/60 p-6">
-                      <h3 className="flex items-center gap-2 font-semibold text-foreground">
-                        <ClipboardList className="size-4 text-primary" />
-                        My Orders
-                      </h3>
-                      <p className="mt-1 text-sm text-muted-foreground">Orders placed at your store.</p>
-
-                      <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-2">
-                        {(["all", ...ORDER_STATUS_OPTIONS.map((o) => o.value)] as const).map((s) => (
-                          <button
-                            key={s}
-                            onClick={() => setOrderStatusFilter(s)}
-                            className={cn(
-                              "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                              orderStatusFilter === s
-                                ? "border-primary bg-primary text-primary-foreground"
-                                : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                            )}
-                          >
-                            {s === "all" ? "All" : ORDER_STATUS_OPTIONS.find((o) => o.value === s)?.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="mt-4 space-y-2">
-                        {storeOrdersLoading ? (
-                          <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
-                        ) : (
-                          (() => {
-                            const filtered =
-                              orderStatusFilter === "all"
-                                ? storeOrders
-                                : storeOrders.filter((o) => o.status === orderStatusFilter);
-                            if (filtered.length === 0 && storeOrdersFailed) {
-                              return (
-                                <div className="flex flex-col items-center gap-2 py-10 text-center">
-                                  <p className="text-sm font-semibold text-foreground">Couldn&apos;t load orders</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    We couldn&apos;t reach the server.
-                                  </p>
-                                  <Button variant="outline" size="sm" onClick={refreshStoreOrders}>
-                                    <RefreshCw />
-                                    Retry
-                                  </Button>
-                                </div>
-                              );
-                            }
-                            if (filtered.length === 0) {
-                              return (
-                                <p className="rounded-xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">
-                                  No orders yet.
-                                </p>
-                              );
-                            }
-                            return filtered.map((order) => (
-                              <button
-                                key={order.id}
-                                type="button"
-                                onClick={() => setOrderDetailsView(order)}
-                                className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 p-4 text-left transition-colors hover:border-primary/40"
-                              >
-                                <div>
-                                  <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
-                                    {order.order_number}
-                                    <span
-                                      className={cn(
-                                        "rounded-full px-2 py-0.5 text-[10px] font-medium",
-                                        orderStatusStyles[order.status]
-                                      )}
-                                    >
-                                      {ORDER_STATUS_OPTIONS.find((o) => o.value === order.status)?.label ??
-                                        order.status}
-                                    </span>
-                                  </p>
-                                  <p className="mt-0.5 text-xs text-muted-foreground">
-                                    {order.items.length} item{order.items.length === 1 ? "" : "s"}
-                                    {(order.placed_at ?? order.created_at) &&
-                                      ` · ${formatDateForDisplay((order.placed_at ?? order.created_at ?? "").slice(0, 10))}`}
-                                  </p>
-                                </div>
-                                <p className="text-sm font-semibold text-foreground">
-                                  ৳{Number(order.total).toFixed(2)}
-                                </p>
-                              </button>
-                            ));
-                          })()
-                        )}
-                      </div>
-                    </Card>
-                  </motion.div>
-                )}
-
-                {activeTab === "store-orders" && isPatient && !myStore && !myStoreLoading && (
-                  <motion.div
-                    key="store-orders-empty"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <Card className="flex flex-col items-center gap-3 border-dashed border-border/60 p-10 text-center">
-                      <Store className="size-8 text-muted-foreground" />
-                      <p className="font-semibold text-foreground">No store yet</p>
-                      <p className="max-w-sm text-sm text-muted-foreground">
-                        Register a store to start seeing orders here.
-                      </p>
-                      <Button size="sm" onClick={() => handleTabChange("store")}>
-                        Go to My Store
-                      </Button>
                     </Card>
                   </motion.div>
                 )}
@@ -6220,28 +4637,13 @@ function DashboardPageInner() {
                 {hasStore && (
                   <>
                     <Separator className="my-1.5" />
-                    <div className="mb-1.5 flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-2 text-emerald-600 dark:text-emerald-400">
+                    <Link
+                      href="/dashboard/store"
+                      className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-2 text-emerald-600 transition-colors hover:bg-emerald-500/25 dark:text-emerald-400"
+                    >
                       <Store className="size-3.5 shrink-0" />
                       <p className="text-[11px] font-semibold tracking-wider uppercase">Store Tools</p>
-                    </div>
-                    <nav className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:flex lg:grid-cols-none lg:flex-col">
-                      {storeToolsNavItems.map((item) => (
-                        <button
-                          key={item.key}
-                          type="button"
-                          onClick={() => handleTabChange(item.key)}
-                          className={cn(
-                            "flex items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-sm font-medium transition-colors lg:gap-2.5 lg:px-3",
-                            activeTab === item.key
-                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                              : "text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400"
-                          )}
-                        >
-                          <item.icon className="size-4 shrink-0" />
-                          <span className="truncate">{item.label}</span>
-                        </button>
-                      ))}
-                    </nav>
+                    </Link>
                   </>
                 )}
 
@@ -6303,82 +4705,6 @@ function DashboardPageInner() {
           </div>
         )}
 
-        {lastOrder && (
-          // Print-only invoice — same "hidden on screen, revealed only by
-          // the matching globals.css rule" pattern as the prescription area
-          // above. data-print-size picks which named @page box (and font
-          // size) applies, set right before print() fires by whichever
-          // button was clicked.
-          <div id="order-invoice-print-area" data-print-size={printInvoiceMode ?? "a4"} className="hidden">
-            <div className="text-center">
-              <p className="text-base font-bold">{myStore?.store_name}</p>
-              {myStore?.store_address && <p className="text-xs">{myStore.store_address}</p>}
-              {myStore?.phone && <p className="text-xs">{myStore.phone}</p>}
-            </div>
-            <div className="mt-3 flex justify-between text-xs">
-              <span>Order #{lastOrder.order_number}</span>
-              <span>
-                {new Date(lastOrder.placed_at ?? lastOrder.created_at ?? Date.now()).toLocaleString()}
-              </span>
-            </div>
-            {lastOrderCustomer && (
-              <p className="mt-1 text-xs">
-                Customer: {lastOrderCustomer.name}
-                {lastOrderCustomer.phone && ` · ${lastOrderCustomer.phone}`}
-                {lastOrderCustomer.address && ` · ${lastOrderCustomer.address}`}
-              </p>
-            )}
-            <div className="mt-2 border-t border-dashed border-black" />
-            <table className="mt-2 w-full text-xs">
-              <thead>
-                <tr>
-                  <th className="text-left font-semibold">Item</th>
-                  <th className="text-right font-semibold">Qty</th>
-                  <th className="text-right font-semibold">Price</th>
-                  <th className="text-right font-semibold">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lastOrder.items.map((item, i) => (
-                  <tr key={item.id ?? i}>
-                    <td>{item.medicine_name ?? `Item #${item.store_product_id}`}</td>
-                    <td className="text-right">{item.quantity}</td>
-                    <td className="text-right">{Number(item.unit_price).toFixed(2)}</td>
-                    <td className="text-right">{Number(item.total_price).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="mt-2 border-t border-dashed border-black" />
-            <div className="mt-2 space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>৳{Number(lastOrder.subtotal).toFixed(2)}</span>
-              </div>
-              {Number(lastOrder.discount) > 0 && (
-                <div className="flex justify-between">
-                  <span>Discount</span>
-                  <span>−৳{Number(lastOrder.discount).toFixed(2)}</span>
-                </div>
-              )}
-              {Number(lastOrder.delivery_fee) > 0 && (
-                <div className="flex justify-between">
-                  <span>Delivery Fee</span>
-                  <span>৳{Number(lastOrder.delivery_fee).toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between border-t border-black pt-1 text-sm font-bold">
-                <span>Total</span>
-                <span>৳{Number(lastOrder.total).toFixed(2)}</span>
-              </div>
-            </div>
-            {lastOrder.payment_method && (
-              <p className="mt-2 text-xs">Payment: {lastOrder.payment_method}</p>
-            )}
-            <p className="mt-4 text-center text-xs">Thank you for your purchase!</p>
-          </div>
-        )}
-
         {/* "View Details" modal — a dialog instead of expanding a row in
             place, since a list with a hundred-plus prescriptions in it
             would get unwieldy if every "expanded" row pushed the rest of
@@ -6412,115 +4738,6 @@ function DashboardPageInner() {
               >
                 <Printer />
                 Print
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={orderDetailsView != null}
-          onOpenChange={(open) => {
-            if (!open) setOrderDetailsView(null);
-          }}
-        >
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Order {orderDetailsView?.order_number}</DialogTitle>
-            </DialogHeader>
-            {orderDetailsView && (
-              <div className="-mx-1.5 max-h-[65vh] space-y-4 overflow-y-auto px-1.5 py-1">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Status</Label>
-                    <Select
-                      value={orderDetailsView.status}
-                      onValueChange={(v) => {
-                        if (v) changeOrderStatus(orderDetailsView, v as OrderStatus);
-                      }}
-                    >
-                      <SelectTrigger className="w-44">
-                        <SelectValue>
-                          {(value: OrderStatus) =>
-                            ORDER_STATUS_OPTIONS.find((o) => o.value === value)?.label ?? value
-                          }
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ORDER_STATUS_OPTIONS.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>
-                            {o.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {updatingOrderStatus && <p className="text-xs text-muted-foreground">Saving…</p>}
-                </div>
-
-                <div className="space-y-2 rounded-xl border border-border/60 p-3">
-                  {orderDetailsView.items.map((item, i) => (
-                    <div key={item.id ?? i} className="flex items-center justify-between gap-2 text-sm">
-                      <span className="text-foreground">
-                        {item.medicine_name ?? `Item #${item.store_product_id}`} × {item.quantity}
-                      </span>
-                      <span className="text-muted-foreground">৳{Number(item.total_price).toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="space-y-1 text-sm">
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>Subtotal</span>
-                    <span>৳{Number(orderDetailsView.subtotal).toFixed(2)}</span>
-                  </div>
-                  {Number(orderDetailsView.discount) > 0 && (
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span>Discount</span>
-                      <span>−৳{Number(orderDetailsView.discount).toFixed(2)}</span>
-                    </div>
-                  )}
-                  {Number(orderDetailsView.delivery_fee) > 0 && (
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span>Delivery Fee</span>
-                      <span>৳{Number(orderDetailsView.delivery_fee).toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between font-semibold text-foreground">
-                    <span>Total</span>
-                    <span>৳{Number(orderDetailsView.total).toFixed(2)}</span>
-                  </div>
-                </div>
-
-                {orderDetailsView.payment_method && (
-                  <p className="text-xs text-muted-foreground">
-                    Payment: {orderDetailsView.payment_method} · {orderDetailsView.payment_status}
-                  </p>
-                )}
-                {orderDetailsView.notes && (
-                  <p className="text-xs text-muted-foreground italic">&ldquo;{orderDetailsView.notes}&rdquo;</p>
-                )}
-              </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setOrderDetailsView(null)}>
-                Close
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (orderDetailsView) printOrderFromHistory(orderDetailsView, "80mm");
-                }}
-              >
-                <Printer />
-                Print 80mm
-              </Button>
-              <Button
-                onClick={() => {
-                  if (orderDetailsView) printOrderFromHistory(orderDetailsView, "a4");
-                }}
-              >
-                <Printer />
-                Print A4
               </Button>
             </DialogFooter>
           </DialogContent>

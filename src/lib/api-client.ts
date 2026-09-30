@@ -47,6 +47,17 @@ export class ApiError extends Error {
   }
 }
 
+// Prefers the first field-level validation message (Laravel's `errors`
+// shape) over the generic top-level `message`, since that's almost always
+// more specific/actionable for the user.
+export function extractApiErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    const body = err.body as { errors?: Record<string, string[]> } | null;
+    return body?.errors ? (Object.values(body.errors)[0]?.[0] ?? err.message) : err.message;
+  }
+  return fallback;
+}
+
 interface ApiFetchOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
   token?: string | null;

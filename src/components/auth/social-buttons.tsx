@@ -1,6 +1,33 @@
 "use client";
 
+import { useCallback, useState } from "react";
+import Script from "next/script";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { apiFetch, ApiError, type LoginApiResponse } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
+
+// Google Identity Services (loaded below via <Script>) attaches itself to
+// `window.google` — only the token-client shape we actually use is typed
+// here rather than pulling in the full @types/google.accounts package.
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        oauth2: {
+          initTokenClient: (config: {
+            client_id: string;
+            scope: string;
+            callback: (response: { access_token?: string; error?: string }) => void;
+          }) => { requestAccessToken: () => void };
+        };
+      };
+    };
+  }
+}
+
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
 function GoogleIcon() {
   return (
@@ -33,12 +60,76 @@ function LinkedInIcon() {
   );
 }
 
-export function SocialButtons() {
+interface SocialButtonsProps {
+  // Fired with the freshly issued session token right after a successful
+  // Google sign-in — the login/register page decides where to go next
+  // (completing a pending booking, a `?from=` redirect, etc.) rather than
+  // this shared component guessing.
+  onAuthenticated?: (token: string) => void;
+}
+
+export function SocialButtons({ onAuthenticated }: SocialButtonsProps) {
+  const { applySession } = useAuth();
+  const [googleReady, setGoogleReady] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleGoogleClick = useCallback(() => {
+    if (!GOOGLE_CLIENT_ID) {
+      toast.error("Google Sign-In isn't configured yet.");
+      return;
+    }
+    if (!googleReady || !window.google) {
+      toast.error("Google Sign-In is still loading — try again in a moment.");
+      return;
+    }
+
+    setSubmitting(true);
+    const client = window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: "openid email profile",
+      callback: async (response) => {
+        if (!response.access_token) {
+          setSubmitting(false);
+          // A plain dismissal of the account picker shouldn't read as an
+          // error toast — only surface genuine failures.
+          if (response.error && response.error !== "popup_closed_by_user") {
+            toast.error("Google sign-in was cancelled.");
+          }
+          return;
+        }
+        try {
+          const data = await apiFetch<LoginApiResponse>("/login/google", {
+            method: "POST",
+            body: { access_token: response.access_token },
+          });
+          applySession(data);
+          onAuthenticated?.(data.token);
+        } catch (err) {
+          toast.error(err instanceof ApiError ? err.message : "Google sign-in failed. Please try again.");
+        } finally {
+          setSubmitting(false);
+        }
+      },
+    });
+    client.requestAccessToken();
+  }, [googleReady, applySession, onAuthenticated]);
+
   return (
     <div>
+      <Script
+        src="https://accounts.google.com/gsi/client"
+        strategy="afterInteractive"
+        onLoad={() => setGoogleReady(true)}
+      />
       <div className="grid grid-cols-2 gap-3">
-        <Button type="button" variant="outline" className="w-full">
-          <GoogleIcon />
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={handleGoogleClick}
+          disabled={submitting}
+        >
+          {submitting ? <Loader2 className="animate-spin" /> : <GoogleIcon />}
           Google
         </Button>
         <Button type="button" variant="outline" className="w-full">

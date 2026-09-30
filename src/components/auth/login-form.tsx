@@ -36,6 +36,16 @@ export function LoginForm() {
     formState: { errors, isSubmitting },
   } = useForm<LoginValues>({ resolver: zodResolver(loginSchema) });
 
+  const redirectAfterAuth = async (token: string) => {
+    const handled = await completePendingBooking(token);
+    if (handled) {
+      router.push("/dashboard?tab=appointments");
+      return;
+    }
+    const redirectTo = searchParams.get("from") || "/dashboard";
+    router.push(redirectTo);
+  };
+
   const onSubmit = async (values: LoginValues) => {
     setAuthError(null);
     // Trim defensively — some WebView keyboards (notably inside the Android
@@ -48,15 +58,8 @@ export function LoginForm() {
     }
 
     if (result.token) {
-      const handled = await completePendingBooking(result.token);
-      if (handled) {
-        router.push("/dashboard?tab=appointments");
-        return;
-      }
+      await redirectAfterAuth(result.token);
     }
-
-    const redirectTo = searchParams.get("from") || "/dashboard";
-    router.push(redirectTo);
   };
 
   return (
@@ -73,7 +76,7 @@ export function LoginForm() {
           </p>
 
           <div className="mt-6">
-            <SocialButtons />
+            <SocialButtons onAuthenticated={redirectAfterAuth} />
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
               <div className="space-y-1.5">
                 <Label htmlFor="identifier">Email or Phone</Label>

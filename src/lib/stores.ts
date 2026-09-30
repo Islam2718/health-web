@@ -163,15 +163,16 @@ export async function deleteStoreProduct(
   });
 }
 
-// --- Store Stock (a single purchase/sale/return/adjustment transaction) ---
+// --- Store Stock (a single purchase/sale/adjustment transaction) ---
+// The API only recognizes these three types — no "return" — so a returned
+// item is logged as an Adjustment.
 
-export type StockTransactionType = "purchase" | "sale" | "return" | "adjustment";
+export type StockTransactionType = "purchase" | "sale" | "adjustment";
 
 export const STOCK_TRANSACTION_TYPES: { value: StockTransactionType; label: string }[] = [
   { value: "purchase", label: "Purchase (stock in)" },
   { value: "sale", label: "Sale (stock out)" },
-  { value: "return", label: "Return" },
-  { value: "adjustment", label: "Adjustment" },
+  { value: "adjustment", label: "Adjustment (correction or return)" },
 ];
 
 export interface StoreStockRecord {

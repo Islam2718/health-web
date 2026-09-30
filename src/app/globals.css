@@ -135,6 +135,42 @@
   --sidebar-ring: var(--aqua-mint);
 }
 
+/* Store panel (/dashboard/store/*) gets its own emerald accent — distinct
+   from the site's/admin's teal — so a store owner never mistakes it for
+   the real admin portal. Scoped to a wrapper class rather than touching
+   the global tokens above, same idea as .dark scoping a second palette. */
+.store-shell {
+  --primary: #059669;
+  --primary-foreground: #ffffff;
+  --ring: #059669;
+  --accent: #a7f3d0;
+  --accent-foreground: #064e3b;
+  --sidebar: #ecfdf5;
+  --sidebar-foreground: #064e3b;
+  --sidebar-primary: #059669;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #d1fae5;
+  --sidebar-accent-foreground: #065f46;
+  --sidebar-border: #a7f3d0;
+  --sidebar-ring: #059669;
+}
+
+.dark .store-shell {
+  --primary: #34d399;
+  --primary-foreground: #052e21;
+  --ring: #34d399;
+  --accent: #065f46;
+  --accent-foreground: #d1fae5;
+  --sidebar: #052e21;
+  --sidebar-foreground: #d1fae5;
+  --sidebar-primary: #34d399;
+  --sidebar-primary-foreground: #052e21;
+  --sidebar-accent: #065f46;
+  --sidebar-accent-foreground: #d1fae5;
+  --sidebar-border: #065f46;
+  --sidebar-ring: #34d399;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
